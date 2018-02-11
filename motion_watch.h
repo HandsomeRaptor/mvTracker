@@ -32,7 +32,7 @@ extern "C" {
 #define CODEC_TYPE_VIDEO AVMEDIA_TYPE_VIDEO
 
 // program defines
-#define MAX_MAP_SIDE 32
+#define MAX_MAP_SIDE 120
 #define MAX_FILENAME 600
 
 using namespace std;
@@ -55,6 +55,8 @@ public:
 
 	// tracking
 	int sector_size;
+	int sector_size_x;
+	int sector_size_y;
 	int mb_width;
 	int mb_height;
 

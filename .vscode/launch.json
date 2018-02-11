@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/motion_detect",
             "args": [
                 "/root/Videos/highway.mp4",
-                "32",
+                "0",
                 "1.yuv",
                 "0",
                 "5"],

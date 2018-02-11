@@ -19,7 +19,9 @@ MoveDetector::MoveDetector()
 	int i,j;
 
 	sector_size = 0;
-	mb_width = 0;
+    sector_size_x = 0;
+    sector_size_y = 0;
+	mb_width = 0;    
 	mb_height = 0;
 	mb_stride = 0;
 	sector_max_mb_x = 0;
@@ -79,11 +81,20 @@ void MoveDetector::AllocAnalyzeBuffers()
     quarter_sample = (dec_ctx->flags & CODEC_FLAG_QPEL) != 0;
     shift = 1 + quarter_sample;
 
-    sector_max_mb_x = mb_width / sector_size;
-    sector_max_mb_y = mb_height / sector_size;
-
-    output_width = sector_size*sector_max_mb_x*16;
-    output_height = sector_size*sector_max_mb_y*16;
+    if (sector_size != 0)
+    {
+        sector_max_mb_x = mb_width / sector_size;
+        sector_max_mb_y = mb_height / sector_size;
+        sector_size_x = sector_size;
+        sector_size_y = sector_size;
+    } else {
+        sector_max_mb_x = 1;
+        sector_max_mb_y = 1;
+        sector_size_x = mb_width;
+        sector_size_y = mb_height;
+    }
+    output_width = sector_size_x*sector_max_mb_x*16;
+    output_height = sector_size_y*sector_max_mb_y*16;
 }
 
 
@@ -100,85 +111,101 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 		for (j=0; j<MAX_MAP_SIDE; ++j)
 			gtable2d_sum[i][j] = 0;
 
+    for (sector_x = 0; sector_x < sector_size_x; sector_x++)
+    {
+        for (sector_y = 0; sector_y < sector_size_y; sector_y++)
+        {
+            for (mb_sect_y = 0; mb_sect_y < sector_max_mb_y; mb_sect_y++)
+            {
+                for (mb_sect_x = 0; mb_sect_x < sector_max_mb_x; mb_sect_x++)
+                {
 
-	for (sector_x = 0; sector_x < sector_size; sector_x++) {
-		for (sector_y = 0; sector_y < sector_size; sector_y++) {
-			for (mb_sect_y = 0; mb_sect_y < sector_max_mb_y; mb_sect_y++) {
-				for (mb_sect_x = 0; mb_sect_x < sector_max_mb_x; mb_sect_x++) {
+                    mb_x = sector_x * sector_max_mb_x + mb_sect_x;
+                    mb_y = sector_y * sector_max_mb_y + mb_sect_y;
+                    mb_index = mb_x + mb_y * mb_stride;
 
-  			mb_x = sector_x * sector_max_mb_x + mb_sect_x;
-			mb_y = sector_y * sector_max_mb_y + mb_sect_y;
-            mb_index = mb_x + mb_y * mb_stride;
+                    if (pict->motion_val)
+                    {
 
-			if (pict->motion_val) {
+                        for (type = 0; type < 3; type++)
+                        {
+                            int direction = 0;
+                            switch (type)
+                            {
+                            case 0:
+                                if (pict->pict_type != FF_P_TYPE)
+                                    continue;
+                                direction = 0;
+                                break;
+                            case 1:
+                                if (pict->pict_type != FF_B_TYPE)
+                                    continue;
+                                direction = 0;
+                                break;
+                            case 2:
+                                if (pict->pict_type != FF_B_TYPE)
+                                    continue;
+                                direction = 1;
+                                break;
+                            }
 
-				for (type = 0; type < 3; type++) {
-					int direction = 0;
-					switch (type) {
-					case 0:
-						if (pict->pict_type != FF_P_TYPE)
-							continue;
-						direction = 0;
-						break;
-					case 1:
-						if (pict->pict_type != FF_B_TYPE)
-							continue;
-						direction = 0;
-						break;
-					case 2:
-						if (pict->pict_type != FF_B_TYPE)
-							continue;
-						direction = 1;
-						break;
-					}
+                            if (IS_8X8(pict->mb_type[mb_index]))
+                            {
+                                for (i = 0; i < 4; i++)
+                                {
+                                    xy = (mb_x * 2 + (i & 1) + (mb_y * 2 + (i >> 1)) * mv_stride) << (mv_sample_log2 - 1);
+                                    dx = (pict->motion_val[direction][xy][0] >> shift);
+                                    dy = (pict->motion_val[direction][xy][1] >> shift);
+                                    gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                }
+                            }
+                            else if (IS_16X8(pict->mb_type[mb_index]))
+                            {
+                                for (i = 0; i < 2; i++)
+                                {
+                                    xy = (mb_x * 2 + (mb_y * 2 + i) * mv_stride) << (mv_sample_log2 - 1);
+                                    dx = (pict->motion_val[direction][xy][0] >> shift);
+                                    dy = (pict->motion_val[direction][xy][1] >> shift);
+                                    if (IS_INTERLACED(pict->mb_type[mb_index]))
+                                    {
+                                        dy *= 2;
+                                    }
+                                    gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                }
+                            }
+                            else if (IS_8X16(pict->mb_type[mb_index]))
+                            {
+                                for (i = 0; i < 2; i++)
+                                {
+                                    xy = (mb_x * 2 + i + mb_y * 2 * mv_stride) << (mv_sample_log2 - 1);
+                                    dx = (pict->motion_val[direction][xy][0] >> shift);
+                                    dy = (pict->motion_val[direction][xy][1] >> shift);
+                                    if (IS_INTERLACED(pict->mb_type[mb_index]))
+                                    {
+                                        dy *= 2;
+                                    }
+                                    gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                }
+                            }
+                            else
+                            {
+                                xy = (mb_x + mb_y * mv_stride) << mv_sample_log2;
+                                dx = (pict->motion_val[direction][xy][0] >> shift);
+                                dy = (pict->motion_val[direction][xy][1] >> shift);
+                                gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                            }
+                        }// type (0...2)
+                    }// pict->motion_val
 
+                }// end x macroblock
+            }// end y macroblock
+        }// end x sector scan
+    }// end y sector scan
 
-					if (IS_8X8(pict->mb_type[mb_index])) {
-						for (i = 0; i < 4; i++) {
-							xy = (mb_x*2 + (i&1) + (mb_y*2 + (i>>1))*mv_stride) << (mv_sample_log2-1);
-							dx = (pict->motion_val[direction][xy][0] >> shift);
-							dy = (pict->motion_val[direction][xy][1] >> shift);
-							gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx*dx+dy*dy);
-						}
-					} else if (IS_16X8(pict->mb_type[mb_index])) {
-						for (i = 0; i < 2; i++) {
-							xy = (mb_x*2 + (mb_y*2 + i)*mv_stride) << (mv_sample_log2-1);
-							dx = (pict->motion_val[direction][xy][0] >> shift);
-							dy = (pict->motion_val[direction][xy][1] >> shift);
-							if (IS_INTERLACED(pict->mb_type[mb_index])) {
-								dy *= 2;
-							}
-							gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx*dx+dy*dy);
-						}
-					} else if (IS_8X16(pict->mb_type[mb_index])) {
-						for (i = 0; i < 2; i++) {
-							xy =  (mb_x*2 + i + mb_y*2*mv_stride) << (mv_sample_log2-1);
-							dx = (pict->motion_val[direction][xy][0] >> shift);
-							dy = (pict->motion_val[direction][xy][1] >> shift);
-							if (IS_INTERLACED(pict->mb_type[mb_index])) {
-								dy *= 2;
-							}
-							gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx*dx+dy*dy);
-						}
-					} else {
-						xy = (mb_x + mb_y*mv_stride) << mv_sample_log2;
-						dx = (pict->motion_val[direction][xy][0] >> shift);
-						dy = (pict->motion_val[direction][xy][1] >> shift);
-						gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx*dx+dy*dy);
-					}
-				}		// type (0...2)
-			}			// pict->motion_val
-
-				}   	// end x macroblock
-			}           // end y macroblock
-		}	// end x sector scan
-    }	    // end y sector scan
-
-
-	// set sensible to gtable2d_sum[]
+    // set sensible to gtable2d_sum[]
 	if(sensivity) {
-		for (i=0; i < sector_size; i++) {
-			for (j=0; j < sector_size; j++) {
+		for (i=0; i < sector_size_x; i++) {
+			for (j=0; j < sector_size_y; j++) {
 				gtable2d_sum[i][j] /= sensivity;
 			}
 		}
@@ -187,8 +214,8 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 
 	// show data
 	printf("\n\n ==== 2D MAP ====\n");
-	for (i=0; i < sector_size; i++) {
-		for (j=0; j < sector_size; j++) {
+	for (i=0; i < sector_size_y; i++) {
+		for (j=0; j < sector_size_x; j++) {
 			printf("%3d ", gtable2d_sum[j][i]);
 		}
 		printf("\n");
@@ -253,9 +280,9 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     if(!amplify_yuv) amplify_yuv = 1;
 
 	// visualize sector level (1 value --> sector zone)
-    for (sector_y = 0; sector_y < sector_size; sector_y++) {
+    for (sector_y = 0; sector_y < sector_size_y; sector_y++) {
 		for (mb_sect_y = 0; mb_sect_y < sector_max_mb_y*16; mb_sect_y++) {
-			for (sector_x = 0; sector_x < sector_size; sector_x++) {
+			for (sector_x = 0; sector_x < sector_size_x; sector_x++) {
 				for (i = 0; i < 16*sector_max_mb_x; i++) {
 					tmp_table2d_sum[sector_x][sector_y] = (uint8_t) gtable2d_sum[sector_x][sector_y]*amplify_yuv;		// change amplify
 					fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
@@ -294,7 +321,7 @@ void MoveDetector::MainDec()
     printf("video: size: %d x %d macroblocks\n", mb_height, mb_width);
 
     while (1) {
-        AVFilterBufferRef *picref;
+        //AVFilterBufferRef *picref;
         if ((ret = av_read_frame(fmt_ctx, &packet)) < 0)
             break;
 
@@ -366,8 +393,8 @@ void MoveDetector::SetFileParams(char *gfilename, int gsector_size, char *gout_f
 	fvideomask_desc;
  
     // test gsector_size
-    if(gsector_size > 32) {
-    	printf("sector size can`t be more than 32\n");
+    if(gsector_size > MAX_MAP_SIDE) {
+    	printf("sector size can`t be more than %d\n", MAX_MAP_SIDE);
         goto end;
     }
 
@@ -407,9 +434,9 @@ void MoveDetector::Help(void)
  printf("===============\n");
  printf("motion detect program\n");
  printf("\ncase 1: text-only output\n");
- printf("./motion_detect\n  1) filename/stream\n  2) sector_size (square - ex.<16> for 16x16)\n\n");
+ printf("./motion_detect\n  1) filename/stream\n  2) sector_size (square - ex.<16> for 16x16, use 0 to stick to 16x16px macroblocks)\n\n");
  printf("case 2: text output + yuv mask write\n");
- printf("./motion_detect\n  1) filename/stream\n  2) sector_size (square - ex.<16> for 16x16)\n  3) output_filename (for yuv-mask save)\n  4) sensivity (0 - disable or result division by <X>) \n  5) amplify mv for visualization\n\n");
+ printf("./motion_detect\n  1) filename/stream\n  2) sector_size (square - ex.<16> for 16x16, use 0 to stick to 16x16px macroblocks)\n  3) output_filename (for yuv-mask save)\n  4) sensivity (0 - disable or result division by <X>) \n  5) amplify mv for visualization\n\n");
  printf("===============\n");
 }
 
