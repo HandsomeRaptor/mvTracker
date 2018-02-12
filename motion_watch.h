@@ -49,6 +49,7 @@ public:
 	FILE *fvideomask_desc;
 	char mask_filename[MAX_FILENAME];
 	int movemask_file_flag;
+	int movemask_std_flag;
 
 	// memory
 	int gtable2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
@@ -85,6 +86,7 @@ public:
         // misc and timing
 	int count;
 	double sum;
+	int packet_skip;
 
 	// funcs
 	void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
