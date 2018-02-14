@@ -10,6 +10,7 @@
 #include <sys/inotify.h>
 #include <limits.h>
 #include <string.h>
+#include <stack>
 
 #include "motion_watch.h"
 
@@ -35,7 +36,9 @@ MoveDetector::MoveDetector()
     count = 0;
     sum = 0;
 
-    packet_skip = 3;
+    packet_skip = PACKET_SKIP;
+    useSquareElement = USE_SQUARE;
+    binThreshold = BIN_THRESHOLD;
 
     fvideo_desc = NULL;
     fvideomask_desc = NULL;
@@ -77,6 +80,7 @@ void MoveDetector::AllocBuffers(void)
 // #################################################################
 void MoveDetector::AllocAnalyzeBuffers() 
 {
+    //TODO: rename and annotate all there fields
     mb_width  = (dec_ctx->width + 15) / 16;
     mb_height = (dec_ctx->height + 15) / 16;
     mb_stride = mb_width + 1;
@@ -207,16 +211,20 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     }// end y sector scan
 
     // set sensible to gtable2d_sum[]
-	if(sensivity) {
-		for (i=0; i < sector_size_x; i++) {
-			for (j=0; j < sector_size_y; j++) {
-				gtable2d_sum[i][j] /= sensivity;
-			}
-		}
-	}
+    if (sensivity)
+    {
+        for (i = 0; i < sector_size_x; i++)
+        {
+            for (j = 0; j < sector_size_y; j++)
+            {
+                gtable2d_sum[i][j] /= sensivity;
+            }
+        }
+    }
 
+    MorphologyProcess();
 
-	// show data
+    // show data
     if (movemask_std_flag)
     {
         printf("\n\n ==== 2D MAP ====\n");
@@ -234,8 +242,148 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 
 }
 
+void MoveDetector::MorphologyProcess(){
 
+    int i,j;
+    int u,v;    
 
+    //threshold the array
+    for (i = 0; i < sector_size_y; i++)
+    {
+        for (j = 0; j < sector_size_x; j++)
+        {
+            if (gtable2d_sum[j][i] < binThreshold)
+                gtable2d_sum[j][i] = 0;
+            else
+                gtable2d_sum[j][i] = 255;
+        }
+    }
+
+    //set edge pixels to black for fill to work properly
+    for (i = 0; i < sector_size_x; i++)
+        gtable2d_sum[i][0] = 0;
+    for (i = 0; i < sector_size_x; i++)
+        gtable2d_sum[i][sector_size_y - 1] = 0;
+    for (i = 0; i < sector_size_y; i++)
+        gtable2d_sum[0][i] = 0;
+    for (i = 0; i < sector_size_y; i++)
+        gtable2d_sum[sector_size_x - 1][i] = 0;
+
+    //flood fill (stack-based)
+    struct coordinate
+    {
+        int x, y;
+    };
+    std::stack<coordinate> toFill;
+    toFill.push({0, 0});
+
+    coordinate top;
+    while (!toFill.empty())
+    {
+        top = toFill.top();
+        toFill.pop();
+        if ((top.x >= 0 && top.y >= 0) 
+            && (top.x < sector_size_x && top.y < sector_size_y) 
+            && (gtable2d_sum[top.x][top.y]) == 0)
+        {
+            //paints background with '-1'
+            gtable2d_sum[top.x][top.y] = -1;
+            toFill.push({top.x + 1, top.y});
+            toFill.push({top.x - 1, top.y});
+            toFill.push({top.x, top.y + 1});
+            toFill.push({top.x, top.y - 1});
+        }
+    }
+    //all holes are now marked with zeros
+
+    //fill holes, restore background to '0'
+    for (i = 0; i < sector_size_x; i++)
+    {
+        for (j = 0; j < sector_size_y; j++)
+        {
+            switch (gtable2d_sum[i][j])
+            {
+            case 0:
+                gtable2d_sum[i][j] = 1;
+                break;
+            case -1:
+                gtable2d_sum[i][j] = 0;
+                break;
+            }
+        }
+    }
+
+    //create a temp array
+    int gtable_temp[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    for (i = 0; i < MAX_MAP_SIDE; ++i)
+        for (j = 0; j < MAX_MAP_SIDE; ++j)
+            gtable_temp[i][j] = gtable2d_sum[i][j];
+
+    //morph closing
+    ErodeDilate(useSquareElement, MORPH_OP_ERODE, gtable2d_sum, gtable_temp);
+    ErodeDilate(useSquareElement, MORPH_OP_DILATE, gtable_temp, gtable2d_sum);
+
+}
+
+static const char kernelCross[3][3] = {
+    {0,1,0},
+    {1,1,1},
+    {0,1,0}
+    };
+static const char kernelSquare[3][3] = {
+    {1,1,1},
+    {1,1,1},
+    {1,1,1}
+    };
+static const int kernelSize = 3;
+
+void MoveDetector::ErodeDilate(int useSquareKernel, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE])
+{
+    //probably wont ever use kernel sizes larger than 3, so this is alright
+    char convKernel[kernelSize][kernelSize];
+    if (useSquareKernel){
+        for (int i = 0; i < kernelSize; ++i)
+            for (int j = 0; j < kernelSize; ++j)
+                convKernel[i][j] = kernelSquare[i][j];
+    } else
+    {
+        for (int i = 0; i < kernelSize; ++i)
+            for (int j = 0; j < kernelSize; ++j)
+                convKernel[i][j] = kernelCross[i][j];
+    }
+
+    //the following is, however, reusable
+    int halfOffset = kernelSize / 2;
+    int doOperation = 0;
+    int u,v;
+    for (int i = 0 + halfOffset; i < sector_size_x - halfOffset; i++)
+    {
+        for (int j = 0 + halfOffset; j < sector_size_y - halfOffset; j++)
+        {
+            doOperation = 0;
+            //possible to optimize
+            for (u = 0; u < kernelSize; u++)
+            {
+                for (v = 0; v < kernelSize; v++)
+                {
+                    if ((inputArray[i + u - halfOffset][j + v - halfOffset] == operation)
+                        &&(convKernel[u][v]))
+                    {
+                        doOperation = 1;
+                    }
+                }
+            }
+            if (doOperation)
+            {
+                outputArray[i][j] = operation;
+            }
+            else
+            {
+                outputArray[i][j] = !operation;
+            }
+        }
+    }
+}
 
 // #################################################################
 
@@ -406,7 +554,7 @@ void MoveDetector::Close(void)
 
 // #################################################################
 
-void MoveDetector::SetFileParams(char *gfilename, int gsector_size, char *gout_filename = NULL, int gsensivity = 0, int gamplify = 0)
+/* void MoveDetector::SetFileParams(char *gfilename, int gsector_size, char *gout_filename = NULL, int gsensivity = 0, int gamplify = 0)
 {
 	int ret, error = 0;
 
@@ -490,7 +638,7 @@ end:
 	Help();
 	exit(0);
 
-}
+} */
 
 // #################################################################
 
@@ -509,14 +657,14 @@ void MoveDetector::Help(void)
     "  -a <n>                  Display amplification.\n"
     "                          Multiplies resulting vector magnitude by <n> (only for .yuv output).\n\n"
     "  -p <n>                  Process only every n-th packet (default: 3).\n\n"
+    "  -t <n>                  Threshold to use for binarization (absolute value). Default: 10\n\n"
+    "  -e <element>            Element to use for morphological closing.\n"
+    "                          Can be a 3x3 <cross> (default) or a <square>.\n\n"
 );
 }
 
-static const char *mvOptions = {"g:o:s:a:p:c"};
+static const char *mvOptions = {"g:o:s:a:p:e:t:c"};
 
-// #################################################################
-
-// main()
 int main(int argc, char **argv)
 {
     MoveDetector movedec;
@@ -544,6 +692,7 @@ int main(int argc, char **argv)
                 movedec.Help();
                 exit(0);
             }
+            movedec.sector_size = gsector_size;
             break;
         }
         case 'o':
@@ -581,9 +730,27 @@ int main(int argc, char **argv)
             movedec.packet_skip = atoi(optarg);
             break;
         }
+        case 't':
+        {
+            movedec.binThreshold = atoi(optarg);
+            break;
+        }
+        case 'e':
+        {
+            string argElement = optarg;
+            if (argElement == "square")
+                movedec.useSquareElement = 1;
+            else
+                movedec.useSquareElement = 0;
+            break;
+        }
         }
     }
     char *gfilename = argv[optind];
+    if (gfilename == NULL){
+        printf("No input stream provided\n");
+        exit(0);
+    }
     if (movedec.OpenVideoFile(gfilename) < 0)
     {
         printf("Error while opening orig videostream %s\n", gfilename);

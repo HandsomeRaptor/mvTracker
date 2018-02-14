@@ -35,12 +35,23 @@ extern "C" {
 #define MAX_MAP_SIDE 120
 #define MAX_FILENAME 600
 
+//default values
+#define BIN_THRESHOLD 10
+#define PACKET_SKIP 3
+#define USE_SQUARE 0
+
+//why even use enums?
+#define MORPH_OP_ERODE 0
+#define MORPH_OP_DILATE 1
+#define MORPH_EL_CROSS 0
+#define MORPH_EL_SQUARE 1
+
 using namespace std;
 
 class MoveDetector
 {
 
-public:
+  public:
 	MoveDetector();
 	virtual ~MoveDetector();
 
@@ -69,24 +80,26 @@ public:
 	int sensivity;
 	int amplify_yuv;
 
-    int mb_stride;
-    int mv_sample_log2;
-    int mv_stride;
-    int quarter_sample;
-    int shift;
+	int mb_stride;
+	int mv_sample_log2;
+	int mv_stride;
+	int quarter_sample;
+	int shift;
 
 	// ffmpeg data
 	AVFormatContext *fmt_ctx;
-	AVCodecContext  *dec_ctx;
+	AVCodecContext *dec_ctx;
 	AVFrame *frame;
 	AVPacket packet;
 	int video_stream_index;
 	int64_t last_pts;
 
-        // misc and timing
+	// misc and timing
 	int count;
 	double sum;
 	int packet_skip;
+	int useSquareElement;
+	int binThreshold;
 
 	// funcs
 	void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
@@ -94,14 +107,17 @@ public:
 	void Help(void);
 
 	void AllocBuffers(void);
-    void AllocAnalyzeBuffers(void);
-    int OpenVideoFile(const char *filename);
-	
-    void MainDec();
-	void MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx);
-	
-    void Close(void);
+	void AllocAnalyzeBuffers(void);
+	int OpenVideoFile(const char *filename);
 
+	void MainDec();
+	void MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx);
+
+	void Close(void);
+
+  private:
+	void MorphologyProcess();
+	void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 };
 
 #endif /* MOTION_WATCH_H_ */
