@@ -36,7 +36,7 @@ extern "C" {
 #define MAX_FILENAME 600
 
 //default values
-#define BIN_THRESHOLD 10
+#define BIN_THRESHOLD 15
 #define PACKET_SKIP 3
 #define USE_SQUARE 0
 
@@ -64,6 +64,12 @@ class MoveDetector
 
 	// memory
 	int gtable2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	float gtable2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
+
+	struct coordinate
+    {
+        int x, y;
+    };
 
 	// tracking
 	int sector_size;

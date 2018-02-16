@@ -12,13 +12,13 @@
             "preLaunchTask": "Makefile (silent)",
             "program": "${workspaceFolder}/motion_detect",
             "args": [
-                "-g","0",
+                "-g","60",
                 //"-o","2.yuv",
                 //"-s","0",
                 //"-a","5",
                 //"-c",
-                "-p","3",
-                "/root/Videos/highway.mp4",
+                "-p","1",
+                "/root/Videos/highway.mp4"
                 ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -44,8 +44,8 @@
                 //"-s","0",
                 //"-a","5",
                 //"-c",
-                "-p","3",
-                "/root/Videos/highway.mp4",
+                "-p","1",
+                "/root/Videos/highway.mp4"
                 ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

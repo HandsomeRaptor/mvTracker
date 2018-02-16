@@ -43,7 +43,7 @@ MoveDetector::MoveDetector()
     fvideo_desc = NULL;
     fvideomask_desc = NULL;
     movemask_file_flag = 0;
-    amplify_yuv = 1;
+    amplify_yuv = 255;
     movemask_std_flag = 0;
 
     output_width = 0;
@@ -113,16 +113,29 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     int i, j, type, processed_frame;
     int mb_index, xy, dx, dy, mb_x, mb_y;
     uint8_t sector_x, sector_y, mb_sect_y, mb_sect_x;
+    //unitVector vectors[4];
+    int sumx, sumy, nVectors;
 
     // prepare new array before
-	for (i=0; i<MAX_MAP_SIDE; ++i)
-		for (j=0; j<MAX_MAP_SIDE; ++j)
-			gtable2d_sum[i][j] = 0;
+    for (i = 0; i < MAX_MAP_SIDE; ++i)
+        for (j = 0; j < MAX_MAP_SIDE; ++j)
+        {
+            gtable2d_sum[i][j] = 0;
+            gtable2d_arg[i][j] = 0;
+        }
+    // for (i = 0; i < 4; i++)
+    // {
+    //     vectors[i].dx = 0;
+    //     vectors[i].dy = 0;
+    // }
 
     for (sector_x = 0; sector_x < sector_size_x; sector_x++)
     {
         for (sector_y = 0; sector_y < sector_size_y; sector_y++)
         {
+            sumx = 0;
+            sumy = 0;
+            nVectors = 0;
             for (mb_sect_y = 0; mb_sect_y < sector_max_mb_y; mb_sect_y++)
             {
                 for (mb_sect_x = 0; mb_sect_x < sector_max_mb_x; mb_sect_x++)
@@ -165,6 +178,9 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                                     dx = (pict->motion_val[direction][xy][0] >> shift);
                                     dy = (pict->motion_val[direction][xy][1] >> shift);
                                     gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                    sumx += dx;
+                                    sumy += dy;
+                                    nVectors++;
                                 }
                             }
                             else if (IS_16X8(pict->mb_type[mb_index]))
@@ -179,6 +195,9 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                                         dy *= 2;
                                     }
                                     gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                    sumx += dx;
+                                    sumy += dy;
+                                    nVectors++;
                                 }
                             }
                             else if (IS_8X16(pict->mb_type[mb_index]))
@@ -193,6 +212,9 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                                         dy *= 2;
                                     }
                                     gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                    sumx += dx;
+                                    sumy += dy;
+                                    nVectors++;
                                 }
                             }
                             else
@@ -201,14 +223,18 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                                 dx = (pict->motion_val[direction][xy][0] >> shift);
                                 dy = (pict->motion_val[direction][xy][1] >> shift);
                                 gtable2d_sum[sector_x][sector_y] += (int)sqrt(dx * dx + dy * dy);
+                                sumx += dx;
+                                    sumy += dy;
+                                    nVectors++;
                             }
-                        }// type (0...2)
-                    }// pict->motion_val
+                        } // type (0...2)
+                    }     // pict->motion_val
 
-                }// end x macroblock
-            }// end y macroblock
-        }// end x sector scan
-    }// end y sector scan
+                } // end x macroblock
+            }     // end y macroblock
+            gtable2d_arg[sector_x][sector_y] = atan2f((float)sumy / (float)nVectors, (float)sumx / (float)nVectors);
+        } // end x sector scan
+    }     // end y sector scan
 
     // set sensible to gtable2d_sum[]
     if (sensivity)
@@ -224,6 +250,15 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 
     MorphologyProcess();
 
+    for (i = 0; i < sector_size_x; i++)
+        {
+            for (j = 0; j < sector_size_y; j++)
+            {
+                if (gtable2d_sum[i][j])
+                gtable2d_arg[i][j] = gtable2d_arg[i][j] * (float)180 / (float) M_PI + (float)180;
+                else gtable2d_arg[i][j] = 0;
+            }
+        }
     // show data
     if (movemask_std_flag)
     {
@@ -232,7 +267,8 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
         {
             for (j = 0; j < sector_size_x; j++)
             {
-                printf("%3d ", gtable2d_sum[j][i]);
+                // printf("%3d ", gtable2d_sum[j][i]);
+                printf("%4.0f ", gtable2d_arg[j][i]);
             }
             printf("\n");
         }
@@ -255,7 +291,7 @@ void MoveDetector::MorphologyProcess(){
             if (gtable2d_sum[j][i] < binThreshold)
                 gtable2d_sum[j][i] = 0;
             else
-                gtable2d_sum[j][i] = 255;
+                gtable2d_sum[j][i] = 1;
         }
     }
 
@@ -270,10 +306,7 @@ void MoveDetector::MorphologyProcess(){
         gtable2d_sum[sector_size_x - 1][i] = 0;
 
     //flood fill (stack-based)
-    struct coordinate
-    {
-        int x, y;
-    };
+    
     std::stack<coordinate> toFill;
     toFill.push({0, 0});
 
@@ -320,7 +353,27 @@ void MoveDetector::MorphologyProcess(){
             gtable_temp[i][j] = gtable2d_sum[i][j];
 
     //morph closing
+    //erode
     ErodeDilate(useSquareElement, MORPH_OP_ERODE, gtable2d_sum, gtable_temp);
+
+    //remove pixels not adjacent to any other
+    for (i = 0; i < MAX_MAP_SIDE; ++i)
+        for (j = 0; j < MAX_MAP_SIDE; ++j)
+            gtable_temp[i][j] = gtable2d_sum[i][j];
+
+    for (i = 0 + 1; i < sector_size_x - 1; i++){
+        for (j = 0 + 1; j < sector_size_y - 1; j++){
+            if (
+                (gtable2d_sum[i - 1][j] == 0)
+                && (gtable2d_sum[i + 1][j] == 0)
+                && (gtable2d_sum[i][j - 1] == 0)
+                && (gtable2d_sum[i][j + 1] == 0)
+            )
+            gtable_temp[i][j] = 0;
+        }
+    }
+    
+    //dilate
     ErodeDilate(useSquareElement, MORPH_OP_DILATE, gtable_temp, gtable2d_sum);
 
 }
@@ -429,6 +482,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
 	uint8_t i, j;
     uint8_t sector_x, sector_y, mb_sect_y, mb_sect_x;
     uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    uint8_t tmp_table2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t zerodata;
 
     zerodata = 0;
@@ -441,8 +495,13 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
 		for (mb_sect_y = 0; mb_sect_y < sector_max_mb_y*16; mb_sect_y++) {
 			for (sector_x = 0; sector_x < sector_size_x; sector_x++) {
 				for (i = 0; i < 16*sector_max_mb_x; i++) {
-					tmp_table2d_sum[sector_x][sector_y] = (uint8_t) gtable2d_sum[sector_x][sector_y]*amplify_yuv;		// change amplify
-					fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
+					// tmp_table2d_sum[sector_x][sector_y] = (uint8_t) gtable2d_sum[sector_x][sector_y]*amplify_yuv;		// change amplify
+					// fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
+                    if (gtable2d_sum[sector_x][sector_y])
+                        tmp_table2d_arg[sector_x][sector_y] = (uint8_t)((gtable2d_arg[sector_x][sector_y] / 540.0f + 0.25f) * amplify_yuv);
+                    else
+                        tmp_table2d_arg[sector_x][sector_y] = (uint8_t)0;
+                    fwrite((const void *)&(tmp_table2d_arg[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_x][sector_y]), filemask);
 				}
 			}
 		}
@@ -747,7 +806,7 @@ int main(int argc, char **argv)
         }
     }
     char *gfilename = argv[optind];
-    if (gfilename == NULL){
+    if (!gfilename){
         printf("No input stream provided\n");
         exit(0);
     }
