@@ -82,24 +82,24 @@ class MoveDetector
 	int movemask_std_flag;
 
 	// memory
-	int gtable2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
-	float gtable2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
-	coordinate gtable2d_xy[MAX_MAP_SIDE][MAX_MAP_SIDE];
-	int markedAreas[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	int mvGridSum[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	float mvGridArg[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	coordinate mvGridCoords[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	int areaGridMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	connectedArea detectedAreas[MAX_CONNAREAS];
 
 	// tracking
-	int sector_size;
-	int sector_size_x;
-	int sector_size_y;
-	int mb_width;
-	int mb_height;
+	int nSectors;
+	int nSectorsX;
+	int nSectorsY;
+	int nBlocksX;
+	int nBlocksY;
 
 	int output_width;
 	int output_height;
 
-	int sector_max_mb_x;
-	int sector_max_mb_y;
+	int mbPerSectorX;
+	int mbPerSectorY;
 	int sensivity;
 	int amplify_yuv;
 
