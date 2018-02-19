@@ -34,10 +34,11 @@ extern "C" {
 // program defines
 #define MAX_MAP_SIDE 120
 #define MAX_FILENAME 600
+#define MAX_CONNAREAS 1000
 
 //default values
 #define BIN_THRESHOLD 15
-#define PACKET_SKIP 3
+#define PACKET_SKIP 1
 #define USE_SQUARE 0
 
 //why even use enums?
@@ -55,6 +56,24 @@ class MoveDetector
 	MoveDetector();
 	virtual ~MoveDetector();
 
+	struct coordinate
+    {
+        int x, y;
+    };
+
+	struct connectedArea
+	{
+		int id;
+		int size;
+		int directionX;
+		int directionY;
+		float directionMag;
+		float directionAng;
+		float centroidX;
+		float centroidY;
+		coordinate boundBoxU, boundBoxB;
+	};
+
 	// debug file
 	FILE *fvideo_desc;
 	FILE *fvideomask_desc;
@@ -65,11 +84,9 @@ class MoveDetector
 	// memory
 	int gtable2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	float gtable2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
-
-	struct coordinate
-    {
-        int x, y;
-    };
+	coordinate gtable2d_xy[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	int markedAreas[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	connectedArea detectedAreas[MAX_CONNAREAS];
 
 	// tracking
 	int sector_size;
@@ -111,7 +128,6 @@ class MoveDetector
 	void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
 	void WriteMaskFile(FILE *file);
 	void Help(void);
-
 	void AllocBuffers(void);
 	void AllocAnalyzeBuffers(void);
 	int OpenVideoFile(const char *filename);
@@ -124,6 +140,8 @@ class MoveDetector
   private:
 	void MorphologyProcess();
 	void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
+	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
+	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
 };
 
 #endif /* MOTION_WATCH_H_ */

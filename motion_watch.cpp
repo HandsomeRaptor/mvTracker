@@ -11,10 +11,11 @@
 #include <limits.h>
 #include <string.h>
 #include <stack>
+#include <algorithm>
+#include <iterator>
 
 #include "motion_watch.h"
 
-// #################################################################
 MoveDetector::MoveDetector()
 {
     int i, j;
@@ -65,22 +66,18 @@ MoveDetector::MoveDetector()
     fvideomask_desc = NULL;
 }
 
-// #################################################################
 MoveDetector::~MoveDetector()
 {  }
 
-// #################################################################
 void MoveDetector::AllocBuffers(void)
 {
     avcodec_register_all();
     av_register_all();
 }
 
-
-// #################################################################
 void MoveDetector::AllocAnalyzeBuffers() 
 {
-    //TODO: rename and annotate all there fields
+    //TODO: rename and annotate all these fields
     mb_width  = (dec_ctx->width + 15) / 16;
     mb_height = (dec_ctx->height + 15) / 16;
     mb_stride = mb_width + 1;
@@ -105,9 +102,6 @@ void MoveDetector::AllocAnalyzeBuffers()
     output_height = sector_size_y*sector_max_mb_y*16;
 }
 
-
-// #################################################################
-// int motion vector for each macroblock in this frame.  
 void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 {
     int i, j, type, processed_frame;
@@ -122,6 +116,7 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
         {
             gtable2d_sum[i][j] = 0;
             gtable2d_arg[i][j] = 0;
+            gtable2d_xy[i][j] = {};
         }
     // for (i = 0; i < 4; i++)
     // {
@@ -232,7 +227,9 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 
                 } // end x macroblock
             }     // end y macroblock
+            //gtable2d_sum[sector_x][sector_y] = (int)sqrt(sumx * sumx + sumy * sumy);
             gtable2d_arg[sector_x][sector_y] = atan2f((float)sumy / (float)nVectors, (float)sumx / (float)nVectors);
+            gtable2d_xy[sector_x][sector_y] = {sumx, sumy};
         } // end x sector scan
     }     // end y sector scan
 
@@ -268,7 +265,8 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
             for (j = 0; j < sector_size_x; j++)
             {
                 // printf("%3d ", gtable2d_sum[j][i]);
-                printf("%4.0f ", gtable2d_arg[j][i]);
+                //printf("%4.0f ", gtable2d_arg[j][i]);
+                printf("%3d", markedAreas[j][i]);
             }
             printf("\n");
         }
@@ -376,6 +374,10 @@ void MoveDetector::MorphologyProcess(){
     //dilate
     ErodeDilate(useSquareElement, MORPH_OP_DILATE, gtable_temp, gtable2d_sum);
 
+    DetectConnectedAreas(gtable2d_sum, markedAreas);
+    ProcessConnectedAreas(markedAreas, detectedAreas);
+
+
 }
 
 static const char kernelCross[3][3] = {
@@ -438,7 +440,144 @@ void MoveDetector::ErodeDilate(int useSquareKernel, int operation, int (*inputAr
     }
 }
 
-// #################################################################
+void MoveDetector::DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]){
+
+    int i,j,u,v;
+
+      for (j = 0; j < MAX_MAP_SIDE; ++j)
+        for (i = 0; i < MAX_MAP_SIDE; ++i)
+        {
+            outputArray[i][j] = 0;
+        }
+    
+    int areasCounter = 1;
+    // ABC-mask area detection
+    // TODO: rework to only do 2 passes
+    for (j = 0 + 1; j < sector_size_y - 1; j++)
+    {
+        for (i = 0 + 1; i < sector_size_x - 1; i++)
+        {
+            // if A is not '0'
+            if (inputArray[i][j])
+            {
+                // neither B nor C are labled
+                if ((!outputArray[i - 1][j]) && (!outputArray[i][j - 1]))
+                {
+                    outputArray[i][j] = areasCounter;
+                    areasCounter++;
+                }
+                // if B xor C is labled
+                else if ((outputArray[i - 1][j] && !outputArray[i][j - 1]))
+                {
+                    outputArray[i][j] = outputArray[i - 1][j];
+                }
+                else if ((!outputArray[i - 1][j] && outputArray[i][j - 1]))
+                {
+                    outputArray[i][j] = outputArray[i][j - 1];
+                }
+                // if both B and C are labled
+                else if (outputArray[i - 1][j] && outputArray[i][j - 1])
+                {
+                    if (outputArray[i - 1][j] == outputArray[i][j - 1])
+                    {
+                        outputArray[i][j] = outputArray[i][j - 1];
+                    }
+                    else
+                    {
+                        outputArray[i][j] = outputArray[i][j - 1];
+                        for (u = 0 + 1; u < sector_size_y - 1; u++)
+                        {
+                            for (v = 0 + 1; v < sector_size_x - 1; v++)
+                            {
+                                if (outputArray[v][u] == outputArray[i - 1][j]){
+                                    outputArray[v][u] = outputArray[i][j - 1];
+                                }
+                            }
+                        }
+                        
+                    }
+                }
+            }
+        }
+    }
+}
+
+void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS])
+{
+
+    int i, j;
+
+    int areaCounter = 0;
+    int currentArea = 0;
+    connectedArea newArea;
+
+    for (i = 0; i < MAX_CONNAREAS; i++)
+    {
+        processedAreas[i] = {};
+    }
+
+    for (j = 0; j < sector_size_y; j++)
+    {
+        for (i = 0; i < sector_size_x; i++)
+        {
+            if (markedAreas[i][j])
+            {
+                //search the list of areas to see if this one is added or not
+                currentArea = markedAreas[i][j];
+                connectedArea *findresult =
+                    std::find_if(begin(processedAreas), end(processedAreas),
+                                 [&currentArea](const connectedArea &x) { return x.id == currentArea; });
+                //if this one is not in the list, add it
+                if (findresult == end(processedAreas))
+                {
+                    newArea = {};
+                    newArea.id = currentArea;
+                    newArea.size = 1;
+                    newArea.directionX = gtable2d_xy[i][j].x;
+                    newArea.directionY = gtable2d_xy[i][j].y;
+                    newArea.centroidX = i;
+                    newArea.centroidY = j;
+                    newArea.boundBoxU = {i, j};
+                    newArea.boundBoxB = {i, j};
+                    processedAreas[areaCounter] = newArea;
+                    areaCounter++;
+                }
+                //otherwise, update existing entry with new values
+                else
+                {
+                    if (findresult->boundBoxU.x > i)
+                        findresult->boundBoxU.x = i;
+                    if (findresult->boundBoxU.y > j)
+                        findresult->boundBoxU.y = j;
+
+                    if (findresult->boundBoxB.x < i)
+                        findresult->boundBoxB.x = i;
+                    if (findresult->boundBoxB.y < j)
+                        findresult->boundBoxB.y = j;
+
+                    //cumulative average
+                    findresult->centroidX = (i + findresult->size * findresult->centroidX) / (findresult->size + 1);
+                    findresult->centroidY = (j + findresult->size * findresult->centroidY) / (findresult->size + 1);
+
+                    findresult->directionX += gtable2d_xy[i][j].x;
+                    findresult->directionY += gtable2d_xy[i][j].y;
+
+                    findresult->size++;
+                }
+            }
+        }
+    }
+
+    for (i = 0; i < areaCounter; i++)
+    {
+        processedAreas[i].directionAng =
+            atan2f((float)processedAreas[i].directionY / (float)processedAreas[i].size,
+                   (float)processedAreas[i].directionX / (float)processedAreas[i].size) * (float)180 / (float) M_PI + (float)180;
+        processedAreas[i].directionMag =
+            sqrt(processedAreas[i].directionX * processedAreas[i].directionX +
+                 processedAreas[i].directionY * processedAreas[i].directionY) / (float)processedAreas[i].size;
+    }
+}
 
 int MoveDetector::OpenVideoFile(const char *video_name)
 {
@@ -474,9 +613,6 @@ int MoveDetector::OpenVideoFile(const char *video_name)
     return 0;
 }
 
-// #################################################################
-
-// write sector
 void MoveDetector::WriteMaskFile(FILE *filemask) {
 
 	uint8_t i, j;
@@ -497,20 +633,19 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
 				for (i = 0; i < 16*sector_max_mb_x; i++) {
 					// tmp_table2d_sum[sector_x][sector_y] = (uint8_t) gtable2d_sum[sector_x][sector_y]*amplify_yuv;		// change amplify
 					// fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
+
                     if (gtable2d_sum[sector_x][sector_y])
                         tmp_table2d_arg[sector_x][sector_y] = (uint8_t)((gtable2d_arg[sector_x][sector_y] / 540.0f + 0.25f) * amplify_yuv);
                     else
                         tmp_table2d_arg[sector_x][sector_y] = (uint8_t)0;
                     fwrite((const void *)&(tmp_table2d_arg[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_x][sector_y]), filemask);
+
 				}
 			}
 		}
     }
 }
 
-// #################################################################
-
-// main loop
 void MoveDetector::MainDec()
 {
     int ret;
@@ -601,8 +736,6 @@ end:
     if (frame)    av_freep(&frame);
 }
 
-// #################################################################
-
 void MoveDetector::Close(void)
 {
     if (dec_ctx)  avcodec_close(dec_ctx);
@@ -610,8 +743,6 @@ void MoveDetector::Close(void)
     if (frame)    av_freep(&frame);
     if (movemask_file_flag) fclose(fvideomask_desc);
 }
-
-// #################################################################
 
 /* void MoveDetector::SetFileParams(char *gfilename, int gsector_size, char *gout_filename = NULL, int gsensivity = 0, int gamplify = 0)
 {
@@ -699,8 +830,6 @@ end:
 
 } */
 
-// #################################################################
-
 void MoveDetector::Help(void)
 {
  printf(
@@ -715,8 +844,8 @@ void MoveDetector::Help(void)
     "                          Divides resulting vector magnitude by <n>.\n\n"
     "  -a <n>                  Display amplification.\n"
     "                          Multiplies resulting vector magnitude by <n> (only for .yuv output).\n\n"
-    "  -p <n>                  Process only every n-th packet (default: 3).\n\n"
-    "  -t <n>                  Threshold to use for binarization (absolute value). Default: 10\n\n"
+    "  -p <n>                  Process only every n-th packet (default: 1).\n\n"
+    "  -t <n>                  Threshold to use for binarization (absolute value). Default: 15\n\n"
     "  -e <element>            Element to use for morphological closing.\n"
     "                          Can be a 3x3 <cross> (default) or a <square>.\n\n"
 );
