@@ -4,7 +4,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Makefile",
+            "label": "makefile: Build All",
             "type": "shell",
             "command": "make",
             "args": [
@@ -19,19 +19,36 @@
                 "reveal": "silent",
                 "focus": false,
                 "panel": "shared"
-            }
+            },
+            "dependsOn":["makefile: Clean"]
         },
         {
-            "label": "Makefile (silent)",
+            "label": "makefile: Build Debug (silent)",
             "type": "shell",
             "command": "make",
             "args": [
-                "all"
+                "debug"
             ],
             "group": "build",
             "presentation": {
                 "echo": true,
                 "reveal": "never",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOn":["makefile: Clean"]
+        },
+        {
+            "label": "makefile: Clean",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "clean"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
                 "focus": false,
                 "panel": "shared"
             }
