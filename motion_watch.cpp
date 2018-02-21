@@ -56,7 +56,7 @@ MoveDetector::MoveDetector()
     frame = avcodec_alloc_frame();
     if (!frame)
     {
-        fprintf(stdout, "Could not allocate frame\n");
+        fprintf(stderr, "Could not allocate frame\n");
         exit(0);
     }
     video_stream_index = -1;
@@ -242,30 +242,31 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     MorphologyProcess();
 
     for (i = 0; i < nSectorsY; i++)
+    {
+        for (j = 0; j < nSectorsX; j++)
         {
-            for (j = 0; j < nSectorsX; j++)
-            {
-                if (mvGridSum[i][j])
-                mvGridArg[i][j] = mvGridArg[i][j] * (float)180 / (float) M_PI + (float)180;
-                else mvGridArg[i][j] = 0;
-            }
+            if (mvGridSum[i][j])
+                mvGridArg[i][j] = mvGridArg[i][j] * (float)180 / (float)M_PI + (float)180;
+            else
+                mvGridArg[i][j] = 0;
         }
+    }
     // show data
     if (movemask_std_flag)
     {
-        printf("\n\n ==== 2D MAP ====\n");
+        fprintf(stderr, "\n\n ==== 2D MAP ====\n");
         for (i = 0; i < nSectorsY; i++)
         {
             for (j = 0; j < nSectorsX; j++)
             {
                 // printf("%3d ", mvGridSum[j][i]);
                 //printf("%4.0f ", mvGridArg[j][i]);
-                areaGridMarked[i][j] == 0 ? printf("  .") : printf("%3d", areaGridMarked[i][j]);
+                areaGridMarked[i][j] == 0 ? printf("  .") : fprintf(stdout, "%3d", areaGridMarked[i][j]);
             }
-            printf("\n");
+            fprintf(stdout, "\n");
         }
 
-        printf("---- Detected areas ---- \n");
+        fprintf(stderr, "---- Detected areas ---- \n");
         int currId = 1;
         i = 0;
         while (currId)
@@ -273,20 +274,22 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
             if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
             {
                 currId = detectedAreas[i].id;
-                printf("ID: %3d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f \n", 
-                detectedAreas[i].id,
-                detectedAreas[i].size,
-                detectedAreas[i].centroidX,
-                detectedAreas[i].centroidY,
-                detectedAreas[i].directionMag,
-                detectedAreas[i].directionAng);
+                fprintf(stderr, "ID: %3d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f \n",
+                        detectedAreas[i].id,
+                        detectedAreas[i].size,
+                        detectedAreas[i].centroidX,
+                        detectedAreas[i].centroidY,
+                        detectedAreas[i].directionMag,
+                        detectedAreas[i].directionAng);
                 i++;
-            } else break;
+            }
+            else
+                break;
         }
     }
 
-    if(movemask_file_flag) WriteMaskFile(fvideomask_desc);
-
+    if (movemask_file_flag)
+        WriteMaskFile(fvideomask_desc);
 }
 
 void MoveDetector::MorphologyProcess(){
@@ -816,7 +819,7 @@ void MoveDetector::MainDec()
                 frame_n = frame -> best_effort_timestamp / frame -> pkt_duration;
                 if (frame->pict_type != FF_I_TYPE)
                 {
-                    printf("processing frame %d (actual frame %d, packet no. %d), \n", processed_frame, frame_n, packet_n);
+                    fprintf(stderr, "processing frame %d (actual frame %d, packet no. %d), \n", processed_frame, frame_n, packet_n);
 
                     // multithread ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                     // ToDO: .............
@@ -837,19 +840,22 @@ void MoveDetector::MainDec()
 end:
     //time(&end_t);
     end_t = clock();
-    diff_t = ((double) (end_t - start_t)) / CLOCKS_PER_SEC;
-    printf("TOTAL FRAMES PROCESSED = %d\n", processed_frame);
+    diff_t = ((double)(end_t - start_t)) / CLOCKS_PER_SEC;
+    fprintf(stderr, "TOTAL FRAMES PROCESSED = %d\n", processed_frame);
     //diff_t = difftime(end_t, start_t);
-    printf("Execution time = %f\n", diff_t);
+    fprintf(stderr, "Execution time = %f\n", diff_t);
     //printf("[%d] sum mv: %f, total # mv: %d\n", (int)start_t, sum, count);
-    printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    fprintf(stderr, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
     if (movemask_file_flag)
-    	printf("Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=y8 %s -loop 0 \n\n", output_width, output_height, mask_filename);
+        fprintf(stderr, "Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=y8 %s -loop 0 \n\n", output_width, output_height, mask_filename);
 
-    if (dec_ctx)  avcodec_close(dec_ctx);
-    if (fmt_ctx)  avformat_close_input(&fmt_ctx);
-    if (frame)    av_freep(&frame);
+    if (dec_ctx)
+        avcodec_close(dec_ctx);
+    if (fmt_ctx)
+        avformat_close_input(&fmt_ctx);
+    if (frame)
+        av_freep(&frame);
 }
 
 void MoveDetector::Close(void)
@@ -948,23 +954,22 @@ end:
 
 void MoveDetector::Help(void)
 {
- printf(
-    "Usage: motion_detect [options] input_stream\n"
-    "Options:\n\n"
-    "  -g <n>                  Grid size.\n"
-    "                          ex: <16> divides the input frame into a 16x16 grid. Max 120.\n"
-    "                          Use <0> to divide into 16x16px blocks instead (default)\n\n"
-    "  -c                      Write output map to console.\n\n"
-    "  -o <filename.yuv>       Write output map to filename.yuv.\n\n"
-    "  -s <n>                  Sensitivity.\n"
-    "                          Divides resulting vector magnitude by <n>.\n\n"
-    "  -a <n>                  Display amplification.\n"
-    "                          Multiplies resulting vector magnitude by <n> (only for .yuv output).\n\n"
-    "  -p <n>                  Process only every n-th packet (default: 1).\n\n"
-    "  -t <n>                  Threshold to use for binarization (absolute value). Default: 15\n\n"
-    "  -e <element>            Element to use for morphological closing.\n"
-    "                          Can be a 3x3 <cross> (default) or a <square>.\n\n"
-);
+    fprintf(stderr,
+            "Usage: motion_detect [options] input_stream\n"
+            "Options:\n\n"
+            "  -g <n>                  Grid size.\n"
+            "                          ex: <16> divides the input frame into a 16x16 grid. Max 120.\n"
+            "                          Use <0> to divide into 16x16px blocks instead (default)\n\n"
+            "  -c                      Write output map to console.\n\n"
+            "  -o <filename.yuv>       Write output map to filename.yuv.\n\n"
+            "  -s <n>                  Sensitivity.\n"
+            "                          Divides resulting vector magnitude by <n>.\n\n"
+            "  -a <n>                  Display amplification.\n"
+            "                          Multiplies resulting vector magnitude by <n> (only for .yuv output).\n\n"
+            "  -p <n>                  Process only every n-th packet (default: 1).\n\n"
+            "  -t <n>                  Threshold to use for binarization (absolute value). Default: 15\n\n"
+            "  -e <element>            Element to use for morphological closing.\n"
+            "                          Can be a 3x3 <cross> (default) or a <square>.\n\n");
 }
 
 static const char *mvOptions = {"g:o:s:a:p:e:t:c"};
@@ -992,7 +997,7 @@ int main(int argc, char **argv)
             int gsector_size = atoi(optarg);
             if (gsector_size > MAX_MAP_SIDE)
             {
-                printf("sector size cannot be greater than %d\n", MAX_MAP_SIDE);
+                fprintf(stderr, "sector size cannot be greater than %d\n", MAX_MAP_SIDE);
                 movedec.Help();
                 exit(0);
             }
@@ -1005,7 +1010,7 @@ int main(int argc, char **argv)
             strncpy(movedec.mask_filename, gout_filename, MAX_FILENAME);
             if ((movedec.fvideomask_desc = fopen(gout_filename, "wb")) == NULL)
             {
-                printf("Error while opening mask videostream  %s\n", gout_filename);
+                fprintf(stderr, "Error while opening mask videostream  %s\n", gout_filename);
                 movedec.movemask_file_flag = 0;
             }
             else
@@ -1051,13 +1056,14 @@ int main(int argc, char **argv)
         }
     }
     char *gfilename = argv[optind];
-    if (!gfilename){
-        printf("No input stream provided\n");
+    if (!gfilename)
+    {
+        fprintf(stderr, "No input stream provided\n");
         exit(0);
     }
     if (movedec.OpenVideoFile(gfilename) < 0)
     {
-        printf("Error while opening orig videostream %s\n", gfilename);
+        fprintf(stderr, "Error while opening orig videostream %s\n", gfilename);
         movedec.Help();
         exit(0);
     }
