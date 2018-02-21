@@ -127,6 +127,7 @@ class MoveDetector
 	// funcs
 	void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
 	void WriteMaskFile(FILE *file);
+	void WriteMapConsole();
 	void Help(void);
 	void AllocBuffers(void);
 	void AllocAnalyzeBuffers(void);

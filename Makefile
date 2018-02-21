@@ -7,7 +7,7 @@ CC = g++
 CFLAGS = -std=c++11 -fPIC $(PKG_CFLAGS) -Ibuild_system/target/include/
 LDFLAGS += -Lbuild_system/target/lib/ -lavformat -lavcodec -lavutil -lpthread -lm
 
-SRC = motion_watch.cpp
+SRC = motion_watch.cpp mv_processing.cpp mv_io.cpp
 
 TARGET = motion_detect
 
