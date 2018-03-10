@@ -48,7 +48,8 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     uint8_t sector_x, sector_y;
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t tmp_table2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
-    uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];    
+    uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    connectedArea *detectedAreas = areaBuffer[currFrameBuffer];
 
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
@@ -190,18 +191,21 @@ void MoveDetector::WriteMapConsole()
     fprintf(stderr, "---- Detected areas ---- \n");
     int currId = 1;
     i = 0;
+    
+    connectedArea *detectedAreas = areaBuffer[currFrameBuffer];
     while (currId)
     {
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
         {
             currId = detectedAreas[i].id;
-            fprintf(stderr, "ID: %3d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f \n",
+            fprintf(stderr, "ID: %3d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f Nonuniformity: %3.2f \n",
                     detectedAreas[i].id,
                     detectedAreas[i].size,
                     detectedAreas[i].centroidX,
                     detectedAreas[i].centroidY,
                     detectedAreas[i].directionMag,
-                    detectedAreas[i].directionAng);
+                    detectedAreas[i].directionAng,
+                    detectedAreas[i].uniformity);
             i++;
         }
         else

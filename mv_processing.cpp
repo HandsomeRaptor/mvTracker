@@ -102,7 +102,7 @@ void MoveDetector::MorphologyProcess(){
     ErodeDilate(useSquareElement, MORPH_OP_DILATE, gtable_temp, mvGridSum);
 
     DetectConnectedAreas(mvGridSum, areaGridMarked);
-    ProcessConnectedAreas(areaGridMarked, detectedAreas);
+    ProcessConnectedAreas(areaGridMarked, areaBuffer[currFrameBuffer]);
 
 
 }
@@ -238,6 +238,9 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
     int currentArea = 0;
     connectedArea newArea;
 
+    coordinateF normVector;
+    float length;
+
     for (i = 0; i < MAX_CONNAREAS; i++)
     {
         processedAreas[i] = {};
@@ -262,10 +265,17 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
                     newArea.size = 1;
                     newArea.directionX = mvGridCoords[i][j].x;
                     newArea.directionY = mvGridCoords[i][j].y;
+                    newArea.directionXVar = -1;
+                    newArea.directionYVar = -1;
                     newArea.centroidX = j;
                     newArea.centroidY = i;
                     newArea.boundBoxU = {j, i};
                     newArea.boundBoxB = {j, i};
+                    newArea.uniformity = 0;
+                    newArea.normV = {};
+                    newArea.delta = {};
+                    newArea.delta2 = {};
+                    newArea.M2 = {};
                     processedAreas[areaCounter] = newArea;
                     areaCounter++;
                 }
@@ -286,10 +296,29 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
                     findresult->centroidX = (j + findresult->size * findresult->centroidX) / (findresult->size + 1);
                     findresult->centroidY = (i + findresult->size * findresult->centroidY) / (findresult->size + 1);
 
-                    findresult->directionX += mvGridCoords[i][j].x;
-                    findresult->directionY += mvGridCoords[i][j].y;
+                    findresult->directionX = (mvGridCoords[i][j].x + findresult->size * findresult->centroidX) / (findresult->size + 1);
+                    findresult->directionY = (mvGridCoords[i][j].y + findresult->size * findresult->centroidY) / (findresult->size + 1);                    
 
                     findresult->size++;
+
+                    //normalize vectors to be able to estimate angular variance from x,y variances
+                    //TODO: alot happening here, probably could be optimized
+                    length = sqrt(mvGridCoords[i][j].x * mvGridCoords[i][j].x + mvGridCoords[i][j].y * mvGridCoords[i][j].y);
+                    normVector.x = (length) ? mvGridCoords[i][j].x / length : 0;
+                    normVector.y = (length) ? mvGridCoords[i][j].y / length : 0;
+
+                    //accumulative mean and variance (Welford's algorithm on wiki)
+                    findresult->delta.x = normVector.x - findresult->normV.x;
+                    findresult->normV.x += findresult->delta.x / findresult->size;
+                    findresult->delta2.x = normVector.x - findresult->normV.x;
+                    findresult->M2.x = findresult->M2.x + findresult->delta2.x * findresult->delta.x;
+                    findresult->directionXVar = findresult->M2.x / (findresult->size - 1);
+
+                    findresult->delta.y = normVector.y - findresult->normV.y;
+                    findresult->normV.y += findresult->delta.y / findresult->size;
+                    findresult->delta2.y = normVector.y - findresult->normV.y;
+                    findresult->M2.y = findresult->M2.y + findresult->delta2.y * findresult->delta.y;
+                    findresult->directionYVar = findresult->M2.y / (findresult->size - 1);
                 }
             }
         }
@@ -298,10 +327,11 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
     for (i = 0; i < areaCounter; i++)
     {
         processedAreas[i].directionAng =
-            atan2f((float)processedAreas[i].directionY / (float)processedAreas[i].size,
-                   (float)processedAreas[i].directionX / (float)processedAreas[i].size) * (float)180 / (float) M_PI + (float)180;
+            atan2f((float)processedAreas[i].directionY,
+                   (float)processedAreas[i].directionX) * (float)180 / (float) M_PI + (float)180;
         processedAreas[i].directionMag =
             sqrt(processedAreas[i].directionX * processedAreas[i].directionX +
-                 processedAreas[i].directionY * processedAreas[i].directionY) / (float)processedAreas[i].size;
+                 processedAreas[i].directionY * processedAreas[i].directionY);
+        processedAreas[i].uniformity = (processedAreas[i].directionXVar + processedAreas[i].directionYVar) * 100;
     }
 }

@@ -35,6 +35,7 @@ extern "C" {
 #define MAX_MAP_SIDE 120
 #define MAX_FILENAME 600
 #define MAX_CONNAREAS 1000
+#define AREABUFFER_SIZE 3
 
 //default values
 #define BIN_THRESHOLD 15
@@ -61,20 +62,29 @@ class MoveDetector
         int x, y;
     };
 
-	struct connectedArea
+	struct coordinateF
 	{
+        float x, y;
+    };
+
+    struct connectedArea
+    {
 		int id;
 		int size;
-		int directionX;
-		int directionY;
-		float directionMag;
-		float directionAng;
-		float centroidX;
-		float centroidY;
-		coordinate boundBoxU, boundBoxB;
-	};
+		float directionX;
+		float directionY;
+		float directionXVar;
+        float directionYVar;
+        float directionMag;
+        float directionAng;
+        float centroidX;
+        float centroidY;
+        float uniformity;
+        coordinate boundBoxU, boundBoxB;
+        coordinateF delta, delta2, M2, normV;
+    };
 
-	// debug file
+    // debug file
 	FILE *fvideo_desc;
 	FILE *fvideomask_desc;
 	char mask_filename[MAX_FILENAME];
@@ -84,11 +94,13 @@ class MoveDetector
 	// memory
 	int mvGridSum[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	float mvGridArg[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	float mvGridMag[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	coordinate mvGridCoords[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	int areaGridMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
-	connectedArea detectedAreas[MAX_CONNAREAS];
+    connectedArea areaBuffer[AREABUFFER_SIZE][MAX_CONNAREAS];
+    int currFrameBuffer;
 
-	// tracking
+    // tracking
 	int nSectors;
 	int nSectorsX;
 	int nSectorsY;
@@ -143,6 +155,8 @@ class MoveDetector
 	void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
+	void PrepareFrameBuffers();
+	void SkipDummyFrame();
 };
 
 #endif /* MOTION_WATCH_H_ */

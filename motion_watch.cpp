@@ -96,6 +96,24 @@ void MoveDetector::AllocAnalyzeBuffers()
     output_height = nSectorsY*mbPerSectorY*16;
 }
 
+void MoveDetector::PrepareFrameBuffers()
+{
+    int i, j;
+    for (i = 0; i < MAX_MAP_SIDE; ++i)
+        for (j = 0; j < MAX_MAP_SIDE; ++j)
+        {
+            mvGridSum[i][j] = 0;
+            mvGridMag[i][j] = 0;
+            mvGridArg[i][j] = 0;
+            mvGridCoords[i][j] = {};
+        }
+    
+    for (i = 0; i < MAX_CONNAREAS; i++)
+    {
+        areaBuffer[currFrameBuffer][i] = {};
+    }
+}
+
 void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 {
     int i, j, type, processed_frame;
@@ -104,13 +122,7 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     int sumx, sumy, nVectors;
 
     // prepare new array before
-    for (i = 0; i < MAX_MAP_SIDE; ++i)
-        for (j = 0; j < MAX_MAP_SIDE; ++j)
-        {
-            mvGridSum[i][j] = 0;
-            mvGridArg[i][j] = 0;
-            mvGridCoords[i][j] = {};
-        }
+    PrepareFrameBuffers();   
 
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
@@ -207,8 +219,8 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                                 dy = (pict->motion_val[direction][xy][1] >> shift);
                                 mvGridSum[sector_y][sector_x] += (int)sqrt(dx * dx + dy * dy);
                                 sumx += dx;
-                                    sumy += dy;
-                                    nVectors++;
+                                sumy += dy;
+                                nVectors++;
                             }
                         } // type (0...2)
                     }     // pict->motion_val
@@ -217,6 +229,7 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
             }     // end y macroblock
             //mvGridSum[sector_x][sector_y] = (int)sqrt(sumx * sumx + sumy * sumy);
             mvGridArg[sector_y][sector_x] = atan2f((float)sumy / (float)nVectors, (float)sumx / (float)nVectors);
+            mvGridMag[sector_y][sector_x] = sqrt(sumx * sumx + sumy * sum) / (float)nVectors;
             mvGridCoords[sector_y][sector_x] = {sumx, sumy};
         } // end x sector scan
     }     // end y sector scan
@@ -233,9 +246,6 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
         }
     }
 
-    // morph enabled: 5.8s -> 6.6s
-    MorphologyProcess();
-
     for (i = 0; i < nSectorsY; i++)
     {
         for (j = 0; j < nSectorsX; j++)
@@ -246,10 +256,23 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                 mvGridArg[i][j] = 0;
         }
     }
+
+    // morph enabled: 5.8s -> 6.6s
+    MorphologyProcess();
+
     // show data
     if (movemask_std_flag)
         WriteMapConsole();
 
+    if (movemask_file_flag)
+        WriteMaskFile(fvideomask_desc);
+
+    currFrameBuffer = (currFrameBuffer + 1) % 3;
+}
+
+void MoveDetector::SkipDummyFrame()
+{
+    //output last frame again
     if (movemask_file_flag)
         WriteMaskFile(fvideomask_desc);
 }
@@ -274,6 +297,9 @@ void MoveDetector::MainDec()
     int packet_n = 1;
     int frame_n = 0;
     processed_frame = 0;
+
+    currFrameBuffer = 0;
+
     chrono::high_resolution_clock::time_point start_t = chrono::high_resolution_clock::now();
 
     while (1)
@@ -313,7 +339,14 @@ void MoveDetector::MainDec()
                     // if (movemask_file_flag)
                     // 	printf("Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=y8 %s -loop 0 \n", output_width, output_height, mask_filename);
                 }
-                //frame_n++;
+                else
+                {
+                    if (frame_n)
+                    {
+                        fprintf(stderr, "skipping frame %d (actual frame %d, packet no. %d), \n", processed_frame, frame_n, packet_n);
+                        SkipDummyFrame();
+                    }
+                }
             }
         }
         ++packet_n;
