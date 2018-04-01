@@ -13,7 +13,7 @@
             "program": "${workspaceFolder}/motion_detect",
             "args": [
                 //"-g","32",
-                "-o","2.yuv",
+                //"-o","2.yuv",
                 //"-s","0",
                 //"-a","5",
                 "-c",
