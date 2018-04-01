@@ -49,7 +49,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t tmp_table2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
-    connectedArea *detectedAreas = areaBuffer[currFrameBuffer];
+    connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
 
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
@@ -142,8 +142,56 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     // tmp_table2d_sum[sector_x][sector_y] = (uint8_t) mvGridSum[sector_x][sector_y]*amplify_yuv;		// change amplify
                     // fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
 
-                    if (mvGridSum[sector_y][sector_x])
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)((mvGridArg[sector_y][sector_x] / 540.0f + 0.25f) * amplify_yuv);
+                    //vector arg output
+                    //coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    //coordinateF *v = &(bwProjected[sector_y][sector_x]);
+
+                    // if (v->x || v->y)
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(((atan2f(v->y, v->x) * (float)180 / (float)M_PI + (float)180) / 540.0f + 0.25f) * amplify_yuv);
+                    // else
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+
+                    //vector mag output
+                    // tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
+
+                    //similarity output
+                    //tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
+
+                    //markedFg output
+                    // switch (areaFgMarked[sector_y][sector_x])
+                    // {
+                    // case 0:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 1:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -1:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 2:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -2:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 3:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -3:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 4:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)128;
+                    //     break;
+                    // case -4:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)32;
+                    //     break;
+                    // }
+
+                    //after morph
+                    if (areaGridMarked[sector_y][sector_x] > 0)
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
                     else
                         tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
 
@@ -177,22 +225,129 @@ void MoveDetector::WriteMapConsole()
 {
     int i, j;
     fprintf(stderr, "\n\n ==== 2D MAP ====\n");
+
     for (i = 0; i < nSectorsY; i++)
     {
         for (j = 0; j < nSectorsX; j++)
         {
-            // printf("%3d ", mvGridSum[j][i]);
-            //printf("%4.0f ", mvGridArg[j][i]);
-            areaGridMarked[i][j] == 0 ? printf("  .") : fprintf(stdout, "%3d", areaGridMarked[i][j]);
+            //printf("%2.0f ", mvGridMag[i][j]);
+            //printf("%4.0f ", mvGridArg[i][j]);
+            //areaGridMarked[i][j] == 0 ? printf("  .") : fprintf(stdout, "%3d", areaGridMarked[i][j]);
+            // fprintf(stdout, "%3d", bwProjected[i][j].x);
+            //fprintf(stderr, "%2d", areaFgMarked[i][j]);
+            switch (areaFgMarked[i][j])
+            {
+            case 0:
+                fprintf(stderr, "? ");
+                break;
+            case 1:
+                fprintf(stderr, "0 ");
+                break;
+            case -1:
+                fprintf(stderr, ". ");
+                break;
+            case 2:
+                fprintf(stderr, "o ");
+                break;
+            case -2:
+                fprintf(stderr, ", ");
+                break;
+            case 3:
+                fprintf(stderr, "8 ");
+                break;
+            case -3:
+                fprintf(stderr, "_ ");
+                break;
+            case 4:
+                fprintf(stderr, "# ");
+                break;
+            case -4:
+                fprintf(stderr, "\" ");
+                break;
+            }
         }
         fprintf(stdout, "\n");
-    }
+    }    
+
+    fprintf(stdout, "\n");
+
+    // fprintf(stderr, "SIMILARITYBW \n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%4.2f ", similarityBW[i][j]);
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
+
+    // fprintf(stderr, "MAGNITUDE FW\n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%3.0f", sqrt(fwProjected[i][j].x * fwProjected[i][j].x + fwProjected[i][j].y * fwProjected[i][j].y));
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
+
+    // fprintf(stderr, "MAGNITUDE PREV\n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%3.0f", sqrt(mvGridCoords[BUFFER_PREV(currFrameBuffer)][i][j].x * mvGridCoords[BUFFER_PREV(currFrameBuffer)][i][j].x + mvGridCoords[BUFFER_PREV(currFrameBuffer)][i][j].y * mvGridCoords[BUFFER_PREV(currFrameBuffer)][i][j].y));
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
+
+    // fprintf(stderr, "MAGNITUDE \n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%3.0f", mvGridMag[i][j]);
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
+
+    // fprintf(stderr, "MAGNITUDE BW\n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%3.0f", sqrt(bwProjected[i][j].x * bwProjected[i][j].x + bwProjected[i][j].y * bwProjected[i][j].y));
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
+
+    // fprintf(stderr, "MAGNITUDE NEXT\n");
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         fprintf(stdout, "%3.0f", sqrt(mvGridCoords[BUFFER_NEXT(currFrameBuffer)][i][j].x * mvGridCoords[BUFFER_NEXT(currFrameBuffer)][i][j].x + mvGridCoords[BUFFER_NEXT(currFrameBuffer)][i][j].y * mvGridCoords[BUFFER_NEXT(currFrameBuffer)][i][j].y));
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
+
+    // fprintf(stdout, "\n");
 
     fprintf(stderr, "---- Detected areas ---- \n");
     int currId = 1;
     i = 0;
-    
-    connectedArea *detectedAreas = areaBuffer[currFrameBuffer];
+
+    connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
     while (currId)
     {
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
@@ -211,4 +366,6 @@ void MoveDetector::WriteMapConsole()
         else
             break;
     }
+
+    fprintf(stderr, "\n");
 }

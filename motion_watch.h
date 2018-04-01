@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <vector>
 
 extern "C" {
  #include <libavcodec/avcodec.h>
@@ -38,7 +39,8 @@ extern "C" {
 #define AREABUFFER_SIZE 3
 
 //default values
-#define BIN_THRESHOLD 15
+#define BIN_THRESHOLD 10
+#define CONSIST_THRESHOLD 10
 #define PACKET_SKIP 1
 #define USE_SQUARE 0
 
@@ -47,6 +49,15 @@ extern "C" {
 #define MORPH_OP_DILATE 1
 #define MORPH_EL_CROSS 0
 #define MORPH_EL_SQUARE 1
+
+#define MV_PROJECT_FORWARDS -1
+#define MV_PROJECT_BACKWARDS 1
+
+#define BUFFER_NEXT(a) a
+#define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
+#define BUFFER_PREV(a) (((a - 2) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
+
+#define ROLLINGAVG(oldv, newv, lastsize) (newv + lastsize * oldv) / (lastsize + 1)
 
 using namespace std;
 
@@ -82,6 +93,7 @@ class MoveDetector
         float uniformity;
         coordinate boundBoxU, boundBoxB;
         coordinateF delta, delta2, M2, normV;
+        bool isTracked;
     };
 
     // debug file
@@ -92,13 +104,25 @@ class MoveDetector
 	int movemask_std_flag;
 
 	// memory
-	int mvGridSum[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	//int mvGridSum[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	float mvGridArg[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	float mvGridMag[MAX_MAP_SIDE][MAX_MAP_SIDE];
-	coordinate mvGridCoords[MAX_MAP_SIDE][MAX_MAP_SIDE];
+	//coordinate mvGridCoords[MAX_MAP_SIDE][MAX_MAP_SIDE];
+
 	int areaGridMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea areaBuffer[AREABUFFER_SIZE][MAX_CONNAREAS];
+    coordinate mvGridCoords[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
+
+    coordinateF bwProjected[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    coordinateF fwProjected[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    float similarityBW[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    float similarityFW[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    float similarityBWFW[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    int areaFgMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
+
     int currFrameBuffer;
+    int delayedFrameNumber;
+    int currFrameNumber;
 
     // tracking
 	int nSectors;
@@ -151,12 +175,26 @@ class MoveDetector
 	void Close(void);
 
   private:
-	void MorphologyProcess();
-	void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
+    void MotionFieldProcessing();
+
+    void CalculateMagAng();
+    void MorphologyProcess();
+    void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
-	void PrepareFrameBuffers();
-	void SkipDummyFrame();
+
+    void TrackAreas();
+    void SpatialConsistProcess();
+
+    void TemporalConsistProcess();
+    void ProjectMVectors(coordinate mVectors[][MAX_MAP_SIDE], coordinateF projected[][MAX_MAP_SIDE], int projectionDir = 1);
+    void CalculateSimilarity(coordinate currentMV[][MAX_MAP_SIDE], coordinateF projectedMV[][MAX_MAP_SIDE], float metricOut[][MAX_MAP_SIDE]);
+    void CalculateSimilarity(coordinateF currentMV[][MAX_MAP_SIDE], coordinateF projectedMV[][MAX_MAP_SIDE], float metricOut[][MAX_MAP_SIDE]);
+    void DetectForeground();
+    void SpatialFilter(int marked[][MAX_MAP_SIDE]);
+
+    void PrepareFrameBuffers();
+    void SkipDummyFrame();
 };
 
 #endif /* MOTION_WATCH_H_ */
