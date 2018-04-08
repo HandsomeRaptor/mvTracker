@@ -16,7 +16,7 @@
             },
             "presentation": {
                 "echo": true,
-                "reveal": "silent",
+                "reveal": "never",
                 "focus": false,
                 "panel": "shared"
             },

@@ -35,7 +35,7 @@
                 "/usr/include/x86_64-linux-gnu",
                 "/usr/include",
                 "${workspaceRoot}",
-                "${workspaceRoot}/build_system/build/ffmpeg-1.2.1"
+                "${workspaceRoot}/build_system/target/include"
             ],
             "defines": [],
             "intelliSenseMode": "clang-x64",
@@ -53,7 +53,10 @@
                 ],
                 "limitSymbolsToIncludedHeaders": true,
                 "databaseFilename": ""
-            }
+            },
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
         },
         {
             "name": "Win32",
