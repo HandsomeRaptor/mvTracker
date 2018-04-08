@@ -2,9 +2,10 @@
 #define MOTION_WATCH_H_
 
 #include <iostream>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
+#include <sys/resource.h>
 #include <vector>
 
 extern "C" {
@@ -21,6 +22,7 @@ extern "C" {
 #define IS_8X16(a)       	((a)&MB_TYPE_8x16)
 #define IS_8X8(a)        	((a)&MB_TYPE_8x8)
 #define USES_LIST(a, list) 	((a) & ((MB_TYPE_P0L0|MB_TYPE_P1L0)<<(2*(list))))
+#define IS_INTRA(a) ((a)&7)
 
 // FFMpeg interface change
 #define FF_I_TYPE  AV_PICTURE_TYPE_I  			// Intra
@@ -33,7 +35,7 @@ extern "C" {
 #define CODEC_TYPE_VIDEO AVMEDIA_TYPE_VIDEO
 
 // program defines
-#define MAX_MAP_SIDE 120
+#define MAX_MAP_SIDE 500
 #define MAX_FILENAME 600
 #define MAX_CONNAREAS 1000
 #define AREABUFFER_SIZE 3
@@ -52,6 +54,15 @@ extern "C" {
 
 #define MV_PROJECT_FORWARDS -1
 #define MV_PROJECT_BACKWARDS 1
+
+#define SUBMB_TYPE_INTRA 1
+#define SUBMB_TYPE_16x16 2
+#define SUBMB_TYPE_16x8 3
+#define SUBMB_TYPE_8x16 4
+#define SUBMB_TYPE_8x8 5
+#define SUBMB_TYPE_8x4 6
+#define SUBMB_TYPE_4x8 7
+#define SUBMB_TYPE_4x4 8
 
 #define BUFFER_NEXT(a) a
 #define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
@@ -112,6 +123,7 @@ class MoveDetector
 	int areaGridMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea areaBuffer[AREABUFFER_SIZE][MAX_CONNAREAS];
     coordinate mvGridCoords[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
+    int subMbTypes[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
 
     coordinateF bwProjected[MAX_MAP_SIDE][MAX_MAP_SIDE];
     coordinateF fwProjected[MAX_MAP_SIDE][MAX_MAP_SIDE];
@@ -133,8 +145,9 @@ class MoveDetector
 
 	int output_width;
 	int output_height;
+    int output_block_size;
 
-	int mbPerSectorX;
+    int mbPerSectorX;
 	int mbPerSectorY;
 	int sensivity;
 	int amplify_yuv;
@@ -161,8 +174,8 @@ class MoveDetector
 	int binThreshold;
 
 	// funcs
-	void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
-	void WriteMaskFile(FILE *file);
+    void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
+    void WriteMaskFile(FILE *file);
 	void WriteMapConsole();
 	void Help(void);
 	void AllocBuffers(void);
@@ -171,8 +184,9 @@ class MoveDetector
 
 	void MainDec();
 	void MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx);
+    void MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx);
 
-	void Close(void);
+    void Close(void);
 
   private:
     void MotionFieldProcessing();

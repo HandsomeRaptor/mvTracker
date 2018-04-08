@@ -45,87 +45,87 @@ void MoveDetector::Close(void)
 void MoveDetector::WriteMaskFile(FILE *filemask) {
 
 	uint8_t i, j;
-    uint8_t sector_x, sector_y;
+    int sector_x, sector_y;
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t tmp_table2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
 
-    for (sector_y = 0; sector_y < nSectorsY; sector_y++)
-    {
-        for (sector_x = 0; sector_x < nSectorsX; sector_x++)
-        {
-            boundBoxType[sector_y][sector_x] = 0;
-            for (int u = 0; u < MAX_CONNAREAS; u++)
-            {
-                if (detectedAreas[u].id)
-                {
-                    // top border
-                    if ((detectedAreas[u].boundBoxU.y == sector_y) &&
-                        (detectedAreas[u].boundBoxU.x < sector_x) &&
-                        (detectedAreas[u].boundBoxB.x > sector_x))
-                    {
-                        boundBoxType[sector_y][sector_x] = 1;
-                        break;
-                    }
-                    // bottom border
-                    else if ((detectedAreas[u].boundBoxB.y == sector_y) &&
-                             (detectedAreas[u].boundBoxU.x < sector_x) &&
-                             (detectedAreas[u].boundBoxB.x > sector_x))
-                    {
-                        boundBoxType[sector_y][sector_x] = 2;
-                        break;
-                    }
-                    // left border
-                    else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
-                             (detectedAreas[u].boundBoxU.y < sector_y) &&
-                             (detectedAreas[u].boundBoxB.y > sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 3;
-                        break;
-                    }
-                    // right border
-                    else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
-                             (detectedAreas[u].boundBoxU.y < sector_y) &&
-                             (detectedAreas[u].boundBoxB.y > sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 4;
-                        break;
-                    }
-                    // top left corner
-                    else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
-                             (detectedAreas[u].boundBoxU.y == sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 5;
-                        break;
-                    }
-                    // top right cornder 
-                    else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
-                             (detectedAreas[u].boundBoxU.y == sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 6;
-                        break;
-                    }
-                    // bottom left
-                    else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
-                             (detectedAreas[u].boundBoxB.y == sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 7;
-                        break;
-                    }
-                    // bottom right
-                    else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
-                             (detectedAreas[u].boundBoxB.y == sector_y))
-                    {
-                        boundBoxType[sector_y][sector_x] = 8;
-                        break;
-                    }
-                }
-                else
-                    break;
-            }
-        }
-    }
+    // for (sector_y = 0; sector_y < nSectorsY; sector_y++)
+    // {
+    //     for (sector_x = 0; sector_x < nSectorsX; sector_x++)
+    //     {
+    //         boundBoxType[sector_y][sector_x] = 0;
+    //         for (int u = 0; u < MAX_CONNAREAS; u++)
+    //         {
+    //             if (detectedAreas[u].id)
+    //             {
+    //                 // top border
+    //                 if ((detectedAreas[u].boundBoxU.y == sector_y) &&
+    //                     (detectedAreas[u].boundBoxU.x < sector_x) &&
+    //                     (detectedAreas[u].boundBoxB.x > sector_x))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 1;
+    //                     break;
+    //                 }
+    //                 // bottom border
+    //                 else if ((detectedAreas[u].boundBoxB.y == sector_y) &&
+    //                          (detectedAreas[u].boundBoxU.x < sector_x) &&
+    //                          (detectedAreas[u].boundBoxB.x > sector_x))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 2;
+    //                     break;
+    //                 }
+    //                 // left border
+    //                 else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxU.y < sector_y) &&
+    //                          (detectedAreas[u].boundBoxB.y > sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 3;
+    //                     break;
+    //                 }
+    //                 // right border
+    //                 else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxU.y < sector_y) &&
+    //                          (detectedAreas[u].boundBoxB.y > sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 4;
+    //                     break;
+    //                 }
+    //                 // top left corner
+    //                 else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxU.y == sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 5;
+    //                     break;
+    //                 }
+    //                 // top right cornder 
+    //                 else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxU.y == sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 6;
+    //                     break;
+    //                 }
+    //                 // bottom left
+    //                 else if ((detectedAreas[u].boundBoxU.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxB.y == sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 7;
+    //                     break;
+    //                 }
+    //                 // bottom right
+    //                 else if ((detectedAreas[u].boundBoxB.x == sector_x) &&
+    //                          (detectedAreas[u].boundBoxB.y == sector_y))
+    //                 {
+    //                     boundBoxType[sector_y][sector_x] = 8;
+    //                     break;
+    //                 }
+    //             }
+    //             else
+    //                 break;
+    //         }
+    //     }
+    // }
 
     if (!amplify_yuv)
         amplify_yuv = 1;
@@ -133,17 +133,17 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     const uint8_t boxY = 255;
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
-        for (j = 0; j < mbPerSectorY * 16; j++)
+        for (j = 0; j < mbPerSectorY * output_block_size; j++)
         {
             for (sector_x = 0; sector_x < nSectorsX; sector_x++)
             {
-                for (i = 0; i < 16 * mbPerSectorX; i++)
+                for (i = 0; i < output_block_size * mbPerSectorX; i++)
                 {
                     // tmp_table2d_sum[sector_x][sector_y] = (uint8_t) mvGridSum[sector_x][sector_y]*amplify_yuv;		// change amplify
                     // fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
 
                     //vector arg output
-                    //coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
                     //coordinateF *v = &(bwProjected[sector_y][sector_x]);
 
                     // if (v->x || v->y)
@@ -152,69 +152,103 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
 
                     //vector mag output
-                    // tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
+                    tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
 
                     //similarity output
                     //tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
 
                     //markedFg output
-                    // switch (areaFgMarked[sector_y][sector_x])
+                    switch (areaFgMarked[sector_y][sector_x])
+                    {
+                    case 0:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        break;
+                    case 1:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        break;
+                    case -1:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        break;
+                    case 2:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        break;
+                    case -2:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        break;
+                    case 3:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        break;
+                    case -3:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        break;
+                    case 4:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)128;
+                        break;
+                    case -4:
+                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)32;
+                        break;
+                    }
+
+                    //sumbmtype output
+                    // switch (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x])
                     // {
-                    // case 0:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 1:
+                    // case SUBMB_TYPE_INTRA:
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
                     //     break;
-                    // case -1:
+                    // case SUBMB_TYPE_16x16:
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
                     //     break;
-                    // case 2:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -2:
+                    // case SUBMB_TYPE_16x8:
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
                     //     break;
-                    // case 3:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -3:
+                    // case SUBMB_TYPE_8x16:
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
                     //     break;
-                    // case 4:
+                    // case SUBMB_TYPE_8x8:
                     //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)128;
                     //     break;
-                    // case -4:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)32;
+                    // case SUBMB_TYPE_8x4:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case SUBMB_TYPE_4x8:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case SUBMB_TYPE_4x4:
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // }
 
                     //after morph
-                    if (areaGridMarked[sector_y][sector_x] > 0)
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
-                    else
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    // if (areaGridMarked[sector_y][sector_x] > 0)
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    // else
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
 
-                    if (
-                        (j == 0 && boundBoxType[sector_y][sector_x] == 1) ||
-                        (j == 15 && boundBoxType[sector_y][sector_x] == 2) ||
-                        (i == 0 && boundBoxType[sector_y][sector_x] == 3) ||
-                        (i == 15 && boundBoxType[sector_y][sector_x] == 4))
-                    {
-                        fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
-                    }
-                    else if (
-                        (j == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 6)) ||
-                        (j == 15 && (boundBoxType[sector_y][sector_x] == 7 || boundBoxType[sector_y][sector_x] == 8)) ||
-                        (i == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 7)) ||
-                        (i == 15 && (boundBoxType[sector_y][sector_x] == 6 || boundBoxType[sector_y][sector_x] == 8)))
-                    {
-                        fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
-                    }
-                    else
-                    {
+                    // if (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] == SUBMB_TYPE_INTRA)
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    // else
+                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+
+                    // if (
+                    //     (j == 0 && boundBoxType[sector_y][sector_x] == 1) ||
+                    //     (j == 15 && boundBoxType[sector_y][sector_x] == 2) ||
+                    //     (i == 0 && boundBoxType[sector_y][sector_x] == 3) ||
+                    //     (i == 15 && boundBoxType[sector_y][sector_x] == 4))
+                    // {
+                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
+                    // }
+                    // else if (
+                    //     (j == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 6)) ||
+                    //     (j == 15 && (boundBoxType[sector_y][sector_x] == 7 || boundBoxType[sector_y][sector_x] == 8)) ||
+                    //     (i == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 7)) ||
+                    //     (i == 15 && (boundBoxType[sector_y][sector_x] == 6 || boundBoxType[sector_y][sector_x] == 8)))
+                    // {
+                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
+                    // }
+                    // else
+                    // {
                         fwrite((const void *)&(tmp_table2d_arg[sector_y][sector_x]), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
-                    }
+                    // }
                 }
             }
         }

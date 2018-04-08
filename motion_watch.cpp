@@ -44,6 +44,7 @@ MoveDetector::MoveDetector()
 
     output_width = 0;
     output_height = 0;
+    output_block_size = 16;
 
     // ffmpeg
     fmt_ctx = NULL;
@@ -80,20 +81,30 @@ void MoveDetector::AllocAnalyzeBuffers()
     quarter_sample = (dec_ctx->flags & CODEC_FLAG_QPEL) != 0;
     shift = 1 + quarter_sample;
 
-    if (nSectors != 0)
+    if (nSectors > 0)
     {
         mbPerSectorX = nBlocksX / nSectors;
         mbPerSectorY = nBlocksY / nSectors;
         nSectorsX = nSectors;
         nSectorsY = nSectors;
-    } else {
+    } 
+    else if (nSectors == 0)
+    {
         mbPerSectorX = 1;
         mbPerSectorY = 1;
         nSectorsX = nBlocksX;
         nSectorsY = nBlocksY;
     }
-    output_width = nSectorsX*mbPerSectorX*16;
-    output_height = nSectorsY*mbPerSectorY*16;
+    else
+    {
+        mbPerSectorX = 1;
+        mbPerSectorY = 1;
+        nSectorsX = nBlocksX * 4;
+        nSectorsY = nBlocksY * 4;
+        output_block_size = 4;
+    }
+    output_width = nSectorsX * mbPerSectorX * output_block_size;
+    output_height = nSectorsY * mbPerSectorY * output_block_size;
 }
 
 void MoveDetector::PrepareFrameBuffers()
@@ -106,8 +117,8 @@ void MoveDetector::PrepareFrameBuffers()
             // mvGridMag[i][j] = 0;
             // mvGridArg[i][j] = 0;
             mvGridCoords[currFrameBuffer][i][j] = {};
+            subMbTypes[currFrameBuffer][i][j] = 0;
         }
-    
     for (i = 0; i < MAX_CONNAREAS; i++)
     {
         areaBuffer[currFrameBuffer][i] = {};
@@ -224,7 +235,6 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
                             }
                         } // type (0...2)
                     }     // pict->motion_val
-
                 } // end x macroblock
             }     // end y macroblock
             //mvGridSum[sector_x][sector_y] = (int)sqrt(sumx * sumx + sumy * sumy);
@@ -258,6 +268,144 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     //     }
     // }
 
+    MotionFieldProcessing();
+    currFrameBuffer = (currFrameBuffer + 1) % 3;
+}
+
+void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
+{
+    int i, j, type, processed_frame;
+    int mb_index, xy, dx, dy, mb_x, mb_y;
+    uint8_t sector_x, sector_y, mb_sect_y, mb_sect_x;
+    int subBlockY, subBlockX;
+    const int subBlocksY = nSectorsY, subBlocksX = nSectorsX;
+    uint32_t mbType;
+    bool isIntra;
+    //int sumx, sumy, nVectors;
+
+    // prepare new array before
+    PrepareFrameBuffers();
+
+    if (!pict->motion_val)
+        return;
+    
+    // for (sector_y = 0; sector_y < nSectorsY; sector_y++)
+    // {
+    //     for (sector_x = 0; sector_x < nSectorsX; sector_x++)
+    //     {
+    //         sumx = 0;
+    //         sumy = 0;
+    //         nVectors = 0;
+    for (subBlockY = 0; subBlockY < subBlocksY; subBlockY++)
+    {
+        for (subBlockX = 0; subBlockX < subBlocksX; subBlockX++)
+        {
+            mb_x = subBlockX / 4;
+            mb_y = subBlockY / 4;
+            mb_index = mb_x + mb_y * mb_stride;
+
+            mbType = pict->mb_type[mb_index];
+            isIntra = IS_INTRA(mbType);
+
+            for (type = 0; type < 3; type++)
+            {
+                int direction = 0;
+                switch (type)
+                {
+                case 0:
+                    if (pict->pict_type != FF_P_TYPE)
+                        continue;
+                    direction = 0;
+                    break;
+                case 1:
+                    if (pict->pict_type != FF_B_TYPE)
+                        continue;
+                    direction = 0;
+                    break;
+                case 2:
+                    if (pict->pict_type != FF_B_TYPE)
+                        continue;
+                    direction = 1;
+                    break;
+                }
+
+                if (IS_8X8(pict->mb_type[mb_index]))
+                {
+                    for (i = 0; i < 4; i++)
+                    {
+                        // xy = (mb_x * 2 + (i & 3) + (mb_y * 2 + (i >> 1)) * mv_stride) << (mv_sample_log2 - 1);
+                        //xy = ((mb_x + (mb_y + (subBlockY & 3)) * mv_stride) << (mv_sample_log2)) + 1;
+                        xy = (subBlockX + i) + subBlockY * mv_stride;
+                        dx = (pict->motion_val[direction][xy][0] >> shift);
+                        dy = (pict->motion_val[direction][xy][1] >> shift);
+                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
+                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = (isIntra && dx == 0 && dy == 0)
+                                                                                    ? SUBMB_TYPE_INTRA
+                                                                                    : SUBMB_TYPE_8x8;
+                    }
+                    subBlockX += 3;
+                }
+                //16x8 MB: fill this row based on whichever subpartition this row is in
+                //and skip to next MB on the right
+                else if (IS_16X8(pict->mb_type[mb_index]))
+                {              
+                    xy = (mb_x * 2 + (mb_y * 2 + ((subBlockY >> 1) & 1)) * mv_stride) << (mv_sample_log2 - 1);
+                    
+                    dx = (pict->motion_val[direction][xy][0] >> shift);
+                    dy = (pict->motion_val[direction][xy][1] >> shift);
+                    if (IS_INTERLACED(pict->mb_type[mb_index]))
+                    {
+                        dy *= 2;
+                    }
+                    for (i = 0; i < 4; i++)
+                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
+                    for (i = 0; i < 4; i++)
+                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = (isIntra && dx == 0 && dy == 0)
+                                                                                    ? SUBMB_TYPE_INTRA
+                                                                                    : SUBMB_TYPE_16x8;
+                    subBlockX += 3;
+                }
+                //8x16 MB: fill two subblocks with the left partition MV and two with the right
+                //and skip to next MB on the right
+                else if (IS_8X16(pict->mb_type[mb_index]))
+                {
+                    for (i = 0; i < 2; i++)
+                    {
+                        xy = (mb_x * 2 + i + mb_y * 2 * mv_stride) << (mv_sample_log2 - 1);
+                        dx = (pict->motion_val[direction][xy][0] >> shift);
+                        dy = (pict->motion_val[direction][xy][1] >> shift);
+                        if (IS_INTERLACED(pict->mb_type[mb_index]))
+                        {
+                            dy *= 2;
+                        }
+                        for (j = 0; j < 2; j++)
+                            mvGridCoords[currFrameBuffer][subBlockY][subBlockX + j + (i << 1)] = {dx, dy};
+                        for (j = 0; j < 2; j++)
+                            subMbTypes[currFrameBuffer][subBlockY][subBlockX + j + (i << 1)] = (isIntra && dx == 0 && dy == 0)
+                                                                                                   ? SUBMB_TYPE_INTRA
+                                                                                                   : SUBMB_TYPE_8x16;
+                    }
+                    subBlockX += 3;
+                }
+                //16x16 MB: set this row of subblock vectors to the one in MB
+                //and skip to next MB on the right
+                else
+                {                    
+                    xy = (mb_x + mb_y * mv_stride) << mv_sample_log2;
+                    dx = (pict->motion_val[direction][xy][0] >> shift);
+                    dy = (pict->motion_val[direction][xy][1] >> shift);
+                    for (i = 0; i < 4; i++)
+                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
+                    for (i = 0; i < 4; i++)
+                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = isIntra ? SUBMB_TYPE_INTRA : SUBMB_TYPE_16x16;
+                    subBlockX += 3;
+                }
+            }     // type (0...2)
+        }         // end x macroblock
+    }             // end y macroblock
+    //         mvGridCoords[currFrameBuffer][sector_y][sector_x] = {sumx / nVectors, sumy / nVectors};
+    //     } // end x sector scan
+    // }     // end y sector scan
     MotionFieldProcessing();
     currFrameBuffer = (currFrameBuffer + 1) % 3;
 }
@@ -348,7 +496,10 @@ void MoveDetector::MainDec()
                     // ToDO: .............
 
                     // one thread ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                    MvScanFrame(packet_n, frame, dec_ctx);
+                    if (nSectors >= 0)
+                        MvScanFrame(packet_n, frame, dec_ctx);
+                    else
+                        MvScanFrameH(packet_n, frame, dec_ctx);
                     delayedFrameNumber++;
                     processed_frame++;
                     // if (movemask_file_flag)
@@ -395,7 +546,8 @@ void MoveDetector::Help(void)
             "Options:\n\n"
             "  -g <n>                  Grid size.\n"
             "                          ex: <16> divides the input frame into a 16x16 grid. Max 120.\n"
-            "                          Use <0> to divide into 16x16px blocks instead (default)\n\n"
+            "                          Use <0> to divide into 16x16px blocks instead (default)\n"
+            "                          (temporarily disabled: use 0 for 16x16 and -1 for 4x4 resolution\n\n"
             "  -c                      Write output map to console.\n\n"
             "  -o <filename.yuv>       Write output map to filename.yuv.\n\n"
             "  -s <n>                  Sensitivity.\n"
@@ -410,7 +562,7 @@ void MoveDetector::Help(void)
 
 static const char *mvOptions = {"g:o:s:a:p:e:t:c"};
 
-int main(int argc, char **argv)
+void Initialize(int argc, char **argv)
 {
     MoveDetector movedec;
 
@@ -506,6 +658,35 @@ int main(int argc, char **argv)
 
     movedec.MainDec();
     movedec.Close();
+}
+
+int main(int argc, char **argv)
+{
+    //FIXME: stop storing massive arrays on stack
+    //seriously. disgusting.
+
+    fprintf(stderr, "Increasing stack size...\n");
+
+    const rlim_t kStackSize = 32 * 1024 * 1024; // 32 MB
+    struct rlimit rl;
+    int result;
+
+    result = getrlimit(RLIMIT_STACK, &rl);
+    if (result == 0)
+    {
+        if (rl.rlim_cur < kStackSize)
+        {
+            rl.rlim_cur = kStackSize;
+            result = setrlimit(RLIMIT_STACK, &rl);
+            if (result != 0)
+            {
+                fprintf(stderr, "setrlimit returned result = %d\n", result);
+                return result;
+            }
+        }
+    }
+
+    Initialize(argc, argv);
 
     return 0;
 }
