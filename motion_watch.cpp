@@ -464,6 +464,9 @@ void MoveDetector::MainDec()
 
     chrono::high_resolution_clock::time_point start_t = chrono::high_resolution_clock::now();
 
+    if (movemask_file_flag && USE_YUV2MPEG2)
+        WriteMPEG2Header(fvideomask_desc);
+
     while (1)
     {
         //AVFilterBufferRef *picref;
@@ -529,7 +532,10 @@ void MoveDetector::MainDec()
     fprintf(stderr, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
     if (movemask_file_flag)
-        fprintf(stderr, "Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=y8 %s -loop 0 \n\n", output_width, output_height, mask_filename);
+        if (USE_YUV2MPEG2)
+            fprintf(stderr, "Play mask file: mplayer %s -loop 0 \n\n",  mask_filename);
+        else
+            fprintf(stderr, "Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=i420 %s -loop 0 \n\n", output_width, output_height, mask_filename);
 
     if (dec_ctx)
         avcodec_close(dec_ctx);

@@ -1,4 +1,6 @@
 #include "motion_watch.h"
+#include <sstream>
+#include <string>
 
 int MoveDetector::OpenVideoFile(const char *video_name)
 {
@@ -47,7 +49,9 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
 	uint8_t i, j;
     int sector_x, sector_y;
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
-    uint8_t tmp_table2d_arg[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    uint8_t outFrameY[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    uint8_t outFrameU[MAX_MAP_SIDE / 2][MAX_MAP_SIDE / 2];
+    uint8_t outFrameV[MAX_MAP_SIDE / 2][MAX_MAP_SIDE / 2];
     uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
 
@@ -147,87 +151,88 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     //coordinateF *v = &(bwProjected[sector_y][sector_x]);
 
                     // if (v->x || v->y)
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(((atan2f(v->y, v->x) * (float)180 / (float)M_PI + (float)180) / 540.0f + 0.25f) * amplify_yuv);
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)(((atan2f(v->y, v->x) * (float)180 / (float)M_PI + (float)180) / 540.0f + 0.25f) * amplify_yuv);
                     // else
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
 
                     //vector mag output
-                    tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
+                    outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
 
                     //similarity output
-                    //tmp_table2d_arg[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
+                    //outFrameY[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
 
                     //markedFg output
                     switch (areaFgMarked[sector_y][sector_x])
                     {
                     case 0:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        outFrameY[sector_y][sector_x] = (uint8_t)0;
                         break;
                     case 1:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        outFrameY[sector_y][sector_x] = (uint8_t)255;
                         break;
                     case -1:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        outFrameY[sector_y][sector_x] = (uint8_t)0;
                         break;
                     case 2:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        outFrameY[sector_y][sector_x] = (uint8_t)255;
                         break;
                     case -2:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        outFrameY[sector_y][sector_x] = (uint8_t)0;
                         break;
                     case 3:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                        outFrameY[sector_y][sector_x] = (uint8_t)255;
                         break;
                     case -3:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                        outFrameY[sector_y][sector_x] = (uint8_t)0;
                         break;
                     case 4:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)128;
+                        outFrameY[sector_y][sector_x] = (uint8_t)128;
                         break;
                     case -4:
-                        tmp_table2d_arg[sector_y][sector_x] = (uint8_t)32;
+                        outFrameY[sector_y][sector_x] = (uint8_t)32;
                         break;
                     }
-
+                    outFrameU[sector_y >> 1][sector_x >> 1] = (uint8_t)128;
+                    outFrameV[sector_y >> 1][sector_x >> 1] = (uint8_t)128;
                     //sumbmtype output
                     // switch (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x])
                     // {
                     // case SUBMB_TYPE_INTRA:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
                     //     break;
                     // case SUBMB_TYPE_16x16:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // case SUBMB_TYPE_16x8:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // case SUBMB_TYPE_8x16:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // case SUBMB_TYPE_8x8:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)128;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
                     //     break;
                     // case SUBMB_TYPE_8x4:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // case SUBMB_TYPE_4x8:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // case SUBMB_TYPE_4x4:
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     //     break;
                     // }
 
                     //after morph
                     // if (areaGridMarked[sector_y][sector_x] > 0)
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
                     // else
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
 
                     // if (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] == SUBMB_TYPE_INTRA)
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)0;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
                     // else
-                    //     tmp_table2d_arg[sector_y][sector_x] = (uint8_t)255;
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
 
                     // if (
                     //     (j == 0 && boundBoxType[sector_y][sector_x] == 1) ||
@@ -235,7 +240,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     //     (i == 0 && boundBoxType[sector_y][sector_x] == 3) ||
                     //     (i == 15 && boundBoxType[sector_y][sector_x] == 4))
                     // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
+                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
                     // }
                     // else if (
                     //     (j == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 6)) ||
@@ -243,16 +248,77 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     //     (i == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 7)) ||
                     //     (i == 15 && (boundBoxType[sector_y][sector_x] == 6 || boundBoxType[sector_y][sector_x] == 8)))
                     // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
+                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
                     // }
                     // else
                     // {
-                        fwrite((const void *)&(tmp_table2d_arg[sector_y][sector_x]), sizeof(uint8_t), sizeof(tmp_table2d_arg[sector_y][sector_x]), filemask);
+                        // fwrite((const void *)&(outFrameY[sector_y][sector_x]), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
                     // }
                 }
             }
         }
-    }    
+    }
+    WriteFrameToFile(filemask, outFrameY, outFrameU, outFrameV);
+}
+
+void MoveDetector::WriteFrameToFile(FILE *filemask, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE / 2], uint8_t V[][MAX_MAP_SIDE / 2])
+{
+    const unsigned char frameheader[] = {0x46, 0x52, 0x41, 0x4D, 0x45, 0x0A};
+    if (USE_YUV2MPEG2)
+        fwrite((const void *)&(frameheader), sizeof(char), sizeof(frameheader), filemask);
+
+    uint8_t i, j;
+    int sector_x, sector_y;
+    for (sector_y = 0; sector_y < nSectorsY; sector_y++)
+    {
+        for (j = 0; j < mbPerSectorY * output_block_size; j++)
+        {
+            for (sector_x = 0; sector_x < nSectorsX; sector_x++)
+            {
+                for (i = 0; i < output_block_size * mbPerSectorX; i++)
+                {
+                    fwrite((const void *)&(Y[sector_y][sector_x]), sizeof(uint8_t), sizeof(Y[sector_y][sector_x]), filemask);
+                }
+            }
+        }
+    }
+    for (sector_y = 0; sector_y < nSectorsY; sector_y++)
+    {
+        for (j = 0; j < mbPerSectorY * output_block_size / 2; j++)
+        {
+            for (sector_x = 0; sector_x < nSectorsX; sector_x++)
+            {
+                for (i = 0; i < output_block_size * mbPerSectorX / 2; i++)
+                {
+                    fwrite((const void *)&(U[sector_y / 2][sector_x / 2]), sizeof(uint8_t), sizeof(U[sector_y / 2][sector_x / 2]), filemask);
+                }
+            }
+        }
+    }
+    for (sector_y = 0; sector_y < nSectorsY; sector_y++)
+    {
+        for (j = 0; j < mbPerSectorY * output_block_size / 2; j++)
+        {
+            for (sector_x = 0; sector_x < nSectorsX; sector_x++)
+            {
+                for (i = 0; i < output_block_size * mbPerSectorX / 2; i++)
+                {
+                    fwrite((const void *)&(V[sector_y / 2][sector_x / 2]), sizeof(uint8_t), sizeof(V[sector_y / 2][sector_x / 2]), filemask);
+                }
+            }
+        }
+    }
+}
+
+void MoveDetector::WriteMPEG2Header(FILE *file)
+{
+    ostringstream header;
+    const unsigned char spacer = {0x20};
+    const unsigned char framespacer = {0x0A};
+    header << "YUV4MPEG2" << spacer << "W" << dec_ctx->width << spacer << "H" << dec_ctx->height << spacer;
+    header << "F" << fmt_ctx->streams[video_stream_index]->r_frame_rate.num << ":" << fmt_ctx->streams[video_stream_index]->r_frame_rate.den << spacer;
+    header << "Ip" << spacer << "A1:1" << spacer << "C420" << framespacer;
+    fwrite((const void *)(header.str().c_str()), sizeof(char), header.str().size(), file);
 }
 
 void MoveDetector::WriteMapConsole()
@@ -301,7 +367,7 @@ void MoveDetector::WriteMapConsole()
             }
         }
         fprintf(stdout, "\n");
-    }    
+    }
 
     fprintf(stdout, "\n");
 
@@ -402,4 +468,4 @@ void MoveDetector::WriteMapConsole()
     }
 
     fprintf(stderr, "\n");
-}
+                }
