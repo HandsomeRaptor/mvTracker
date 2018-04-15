@@ -137,6 +137,7 @@ void MoveDetector::MorphologyProcess()
 
     DetectConnectedAreas(mvMask, areaGridMarked);
     ProcessConnectedAreas(areaGridMarked, areaBuffer[BUFFER_CURR(currFrameBuffer)]);
+    TrackAreas(areaBuffer[BUFFER_CURR(currFrameBuffer)], areaBuffer[BUFFER_PREV(currFrameBuffer)]);
 }
 
 static const char kernelCross[3][3] = {
@@ -263,13 +264,13 @@ void MoveDetector::DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*o
 
 void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS])
 {
-    int i, j;
+    int i, j ,u;
 
     int areaCounter = 0;
     int currentArea = 0;
     connectedArea newArea;
 
-    coordinateF normVector;
+    // coordinateF normVector;
     float length;
 
     for (i = 0; i < MAX_CONNAREAS; i++)
@@ -277,36 +278,39 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
         processedAreas[i] = {};
     }
 
+    //enumerate all connected areas in this frame
     for (i = 0; i < nSectorsY; i++)
     {
         for (j = 0; j < nSectorsX; j++)
         {
             if (markedAreas[i][j])
             {
-                //search the list of areas to see if this one is added or not
+                //search the list of areas to see if this one is added or not                
                 currentArea = markedAreas[i][j];
+                //potential bottleneck:
                 connectedArea *findresult =
                     std::find_if(begin(processedAreas), end(processedAreas),
-                                 [&currentArea](const connectedArea &x) { return x.id == currentArea; });
+                                 [&currentArea](const connectedArea &x) { return x.areaID == currentArea; });
                 //if this one is not in the list, add it
                 if (findresult == end(processedAreas))
                 {
                     newArea = {};
-                    newArea.id = currentArea;
+                    newArea.areaID = currentArea;
                     newArea.size = 1;
                     newArea.directionX = mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].x;
                     newArea.directionY = mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].y;
-                    newArea.directionXVar = -1;
-                    newArea.directionYVar = -1;
+                    // newArea.directionXVar = -1;
+                    // newArea.directionYVar = -1;
                     newArea.centroidX = j;
                     newArea.centroidY = i;
                     newArea.boundBoxU = {j, i};
                     newArea.boundBoxB = {j, i};
-                    newArea.uniformity = 0;
-                    newArea.normV = {};
-                    newArea.delta = {};
-                    newArea.delta2 = {};
-                    newArea.M2 = {};
+                    newArea.isTracked = false;
+                    // newArea.uniformity = 0;
+                    // newArea.normV = {};
+                    // newArea.delta = {};
+                    // newArea.delta2 = {};
+                    // newArea.M2 = {};
                     processedAreas[areaCounter] = newArea;
                     areaCounter++;
                 }
@@ -335,26 +339,25 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
                     //normalize vectors to be able to estimate angular variance from x,y variances
                     //TODO: alot happening here, probably could be optimized
                     length = sqrt(mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].x * mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].x + mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].y * mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].y);
-                    normVector.x = (length) ? mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].x / length : 0;
-                    normVector.y = (length) ? mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].y / length : 0;
+                    // normVector.x = (length) ? mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].x / length : 0;
+                    // normVector.y = (length) ? mvGridCoords[BUFFER_CURR(currFrameBuffer)][i][j].y / length : 0;
 
                     //accumulative mean and variance (Welford's algorithm on wiki)
-                    findresult->delta.x = normVector.x - findresult->normV.x;
-                    findresult->normV.x += findresult->delta.x / findresult->size;
-                    findresult->delta2.x = normVector.x - findresult->normV.x;
-                    findresult->M2.x = findresult->M2.x + findresult->delta2.x * findresult->delta.x;
-                    findresult->directionXVar = findresult->M2.x / (findresult->size - 1);
+                    // findresult->delta.x = normVector.x - findresult->normV.x;
+                    // findresult->normV.x += findresult->delta.x / findresult->size;
+                    // findresult->delta2.x = normVector.x - findresult->normV.x;
+                    // findresult->M2.x = findresult->M2.x + findresult->delta2.x * findresult->delta.x;
+                    // findresult->directionXVar = findresult->M2.x / (findresult->size - 1);
 
-                    findresult->delta.y = normVector.y - findresult->normV.y;
-                    findresult->normV.y += findresult->delta.y / findresult->size;
-                    findresult->delta2.y = normVector.y - findresult->normV.y;
-                    findresult->M2.y = findresult->M2.y + findresult->delta2.y * findresult->delta.y;
-                    findresult->directionYVar = findresult->M2.y / (findresult->size - 1);
+                    // findresult->delta.y = normVector.y - findresult->normV.y;
+                    // findresult->normV.y += findresult->delta.y / findresult->size;
+                    // findresult->delta2.y = normVector.y - findresult->normV.y;
+                    // findresult->M2.y = findresult->M2.y + findresult->delta2.y * findresult->delta.y;
+                    // findresult->directionYVar = findresult->M2.y / (findresult->size - 1);
                 }
             }
         }
     }
-
     for (i = 0; i < areaCounter; i++)
     {
         processedAreas[i].directionAng =
@@ -365,7 +368,66 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
         processedAreas[i].directionMag =
             sqrt(processedAreas[i].directionX * processedAreas[i].directionX +
                  processedAreas[i].directionY * processedAreas[i].directionY);
-        processedAreas[i].uniformity = (processedAreas[i].directionXVar + processedAreas[i].directionYVar) * 100;
+        processedAreas[i].id = rand() % 30000 + 1;
+        // processedAreas[i].uniformity = (processedAreas[i].directionXVar + processedAreas[i].directionYVar) * 100;
+    }
+}
+
+void MoveDetector::TrackAreas(connectedArea (&currentAreas)[MAX_CONNAREAS], connectedArea (&prevAreas)[MAX_CONNAREAS])
+{
+    int i = 0, j = 0, u = 0;
+    int den = 4;
+    if (nSectors == 0)
+        den = 16;
+    int sizeTolerance = 512 / den;
+    //const float directionAngTolerance = 45;
+    int searchWindow = 512 / den;
+    int areasCounter = 0;
+    connectedArea *currArea, *prevArea;
+    //for each area in current frame
+    while (currentAreas[i].id > 0)
+    {
+        j = 0;
+        u = 0;
+        currArea = &currentAreas[i];
+
+        //iterate over areas in previous frame
+        while (prevAreas[j].id > 0)
+        {
+            prevArea = &prevAreas[j];
+            if (
+                (abs(prevArea->centroidX + prevArea->directionX - currArea->centroidX) < searchWindow) &&
+                (abs(prevArea->centroidY + prevArea->directionY - currArea->centroidY) < searchWindow) &&
+                (abs(prevArea->size - currArea->size) < sizeTolerance) &&
+                (prevArea->isUsed == false))
+            {
+                currArea->id = prevArea->id;
+                currArea->isTracked = true;
+                prevArea->isUsed = true;
+                break;
+            }
+            j++;
+        }
+        i++;
+        areasCounter++;
+    }
+
+    //FOR FILE OUTPUT ONLY: fill markedAreas with ids instead of areaIDs
+    for (u = 0; u < areasCounter; u++)
+    {
+        for (i = 0; i < nSectorsY; i++)
+        {
+            for (j = 0; j < nSectorsX; j++)
+            {
+                if (areaGridMarked[i][j])
+                {
+                    if (areaGridMarked[i][j] == currentAreas[u].areaID)
+                    {
+                        areaGridMarked[i][j] = currentAreas[u].id;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -500,7 +562,6 @@ void MoveDetector::TemporalConsistProcess()
     DetectForeground();
     SpatialFilter(areaFgMarked);
 }
-
 
 void MoveDetector::ProjectMVectors(coordinate mVectors[][MAX_MAP_SIDE], coordinateF projectedOut[][MAX_MAP_SIDE], int projectionDir)
 {
@@ -708,7 +769,7 @@ void MoveDetector::CalculateSimilarity(coordinateF currentMV[][MAX_MAP_SIDE], co
 
 void MoveDetector::DetectForeground()
 {
-    const float alpha = 0.8, beta = 10;
+    const float alpha = 0.7, beta = 8;
     int i, j;
     for (i = 0; i < MAX_MAP_SIDE; i++)
         for (j = 0; j < MAX_MAP_SIDE; j++)

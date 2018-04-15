@@ -93,19 +93,21 @@ class MoveDetector
     struct connectedArea
     {
 		int id;
-		int size;
-		float directionX;
+        int areaID;
+        int size;
+        float directionX;
 		float directionY;
-		float directionXVar;
-        float directionYVar;
+		// float directionXVar;
+        // float directionYVar;
         float directionMag;
         float directionAng;
         float centroidX;
         float centroidY;
-        float uniformity;
+        // float uniformity;
         coordinate boundBoxU, boundBoxB;
-        coordinateF delta, delta2, M2, normV;
+        // coordinateF delta, delta2, M2, normV;
         bool isTracked;
+        bool isUsed;
     };
 
     // debug file
@@ -177,7 +179,7 @@ class MoveDetector
 	// funcs
     void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
     void WriteMaskFile(FILE *file);
-    void WriteFrameToFile(FILE *file, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE / 2], uint8_t V[][MAX_MAP_SIDE / 2]);
+    void WriteFrameToFile(FILE *file, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE], uint8_t V[][MAX_MAP_SIDE]);
     void WriteMPEG2Header(FILE *file);
     void WriteMapConsole();
     void Help(void);
@@ -199,9 +201,8 @@ class MoveDetector
     void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
-
-    void TrackAreas();
-    void SpatialConsistProcess();
+    void TrackAreas(connectedArea (&currentAreas)[MAX_CONNAREAS], connectedArea (&prevAreas)[MAX_CONNAREAS]);
+    //void SpatialConsistProcess();
 
     void TemporalConsistProcess();
     void ProjectMVectors(coordinate mVectors[][MAX_MAP_SIDE], coordinateF projected[][MAX_MAP_SIDE], int projectionDir = 1);

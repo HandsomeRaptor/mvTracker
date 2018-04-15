@@ -2,6 +2,115 @@
 #include <sstream>
 #include <string>
 
+typedef struct RgbColor
+{
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+} RgbColor;
+
+typedef struct HsvColor
+{
+    unsigned char h;
+    unsigned char s;
+    unsigned char v;
+} HsvColor;
+
+#define CLIP(X) ((X) > 255 ? 255 : (X) < 0 ? 0 : X)
+#define CRGB2Y(R, G, B) CLIP((19595 * R + 38470 * G + 7471 * B) >> 16)
+#define CRGB2Cb(R, G, B) CLIP((36962 * (B - CLIP((19595 * R + 38470 * G + 7471 * B) >> 16)) >> 16) + 128)
+#define CRGB2Cr(R, G, B) CLIP((46727 * (R - CLIP((19595 * R + 38470 * G + 7471 * B) >> 16)) >> 16) + 128)
+
+RgbColor HsvToRgb(HsvColor hsv)
+{
+    RgbColor rgb;
+    unsigned char region, remainder, p, q, t;
+
+    if (hsv.s == 0)
+    {
+        rgb.r = hsv.v;
+        rgb.g = hsv.v;
+        rgb.b = hsv.v;
+        return rgb;
+    }
+
+    region = hsv.h / 43;
+    remainder = (hsv.h - (region * 43)) * 6;
+
+    p = (hsv.v * (255 - hsv.s)) >> 8;
+    q = (hsv.v * (255 - ((hsv.s * remainder) >> 8))) >> 8;
+    t = (hsv.v * (255 - ((hsv.s * (255 - remainder)) >> 8))) >> 8;
+
+    switch (region)
+    {
+    case 0:
+        rgb.r = hsv.v;
+        rgb.g = t;
+        rgb.b = p;
+        break;
+    case 1:
+        rgb.r = q;
+        rgb.g = hsv.v;
+        rgb.b = p;
+        break;
+    case 2:
+        rgb.r = p;
+        rgb.g = hsv.v;
+        rgb.b = t;
+        break;
+    case 3:
+        rgb.r = p;
+        rgb.g = q;
+        rgb.b = hsv.v;
+        break;
+    case 4:
+        rgb.r = t;
+        rgb.g = p;
+        rgb.b = hsv.v;
+        break;
+    default:
+        rgb.r = hsv.v;
+        rgb.g = p;
+        rgb.b = q;
+        break;
+    }
+
+    return rgb;
+}
+
+HsvColor RgbToHsv(RgbColor rgb)
+{
+    HsvColor hsv;
+    unsigned char rgbMin, rgbMax;
+
+    rgbMin = rgb.r < rgb.g ? (rgb.r < rgb.b ? rgb.r : rgb.b) : (rgb.g < rgb.b ? rgb.g : rgb.b);
+    rgbMax = rgb.r > rgb.g ? (rgb.r > rgb.b ? rgb.r : rgb.b) : (rgb.g > rgb.b ? rgb.g : rgb.b);
+
+    hsv.v = rgbMax;
+    if (hsv.v == 0)
+    {
+        hsv.h = 0;
+        hsv.s = 0;
+        return hsv;
+    }
+
+    hsv.s = 255 * long(rgbMax - rgbMin) / hsv.v;
+    if (hsv.s == 0)
+    {
+        hsv.h = 0;
+        return hsv;
+    }
+
+    if (rgbMax == rgb.r)
+        hsv.h = 0 + 43 * (rgb.g - rgb.b) / (rgbMax - rgbMin);
+    else if (rgbMax == rgb.g)
+        hsv.h = 85 + 43 * (rgb.b - rgb.r) / (rgbMax - rgbMin);
+    else
+        hsv.h = 171 + 43 * (rgb.r - rgb.g) / (rgbMax - rgbMin);
+
+    return hsv;
+}
+
 int MoveDetector::OpenVideoFile(const char *video_name)
 {
     int ret;
@@ -50,8 +159,8 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     int sector_x, sector_y;
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t outFrameY[MAX_MAP_SIDE][MAX_MAP_SIDE];
-    uint8_t outFrameU[MAX_MAP_SIDE / 2][MAX_MAP_SIDE / 2];
-    uint8_t outFrameV[MAX_MAP_SIDE / 2][MAX_MAP_SIDE / 2];
+    uint8_t outFrameU[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    uint8_t outFrameV[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
 
@@ -135,6 +244,10 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
         amplify_yuv = 1;
 
     const uint8_t boxY = 255;
+    HsvColor currColorHSV;
+    RgbColor currColorRGB;
+    currColorHSV.s = 255;
+    currColorHSV.v = 255;
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
         for (j = 0; j < mbPerSectorY * output_block_size; j++)
@@ -147,7 +260,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     // fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
 
                     //vector arg output
-                    coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    //coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
                     //coordinateF *v = &(bwProjected[sector_y][sector_x]);
 
                     // if (v->x || v->y)
@@ -156,44 +269,57 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     //     outFrameY[sector_y][sector_x] = (uint8_t)0;
 
                     //vector mag output
-                    outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
+                    //outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
 
                     //similarity output
                     //outFrameY[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
 
                     //markedFg output
-                    switch (areaFgMarked[sector_y][sector_x])
+                    // switch (areaFgMarked[sector_y][sector_x])
+                    // {
+                    // case 0:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 1:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -1:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 2:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -2:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 3:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
+                    //     break;
+                    // case -3:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    //     break;
+                    // case 4:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
+                    //     break;
+                    // case -4:
+                    //     outFrameY[sector_y][sector_x] = (uint8_t)32;
+                    //     break;
+                    // }
+
+                    outFrameY[sector_y][sector_x] = (uint8_t)32;
+                    outFrameU[sector_y][sector_x] = (uint8_t)128;
+                    outFrameV[sector_y][sector_x] = (uint8_t)128;
+
+                    if (areaGridMarked[sector_y][sector_x] > 0)
                     {
-                    case 0:
-                        outFrameY[sector_y][sector_x] = (uint8_t)0;
-                        break;
-                    case 1:
-                        outFrameY[sector_y][sector_x] = (uint8_t)255;
-                        break;
-                    case -1:
-                        outFrameY[sector_y][sector_x] = (uint8_t)0;
-                        break;
-                    case 2:
-                        outFrameY[sector_y][sector_x] = (uint8_t)255;
-                        break;
-                    case -2:
-                        outFrameY[sector_y][sector_x] = (uint8_t)0;
-                        break;
-                    case 3:
-                        outFrameY[sector_y][sector_x] = (uint8_t)255;
-                        break;
-                    case -3:
-                        outFrameY[sector_y][sector_x] = (uint8_t)0;
-                        break;
-                    case 4:
-                        outFrameY[sector_y][sector_x] = (uint8_t)128;
-                        break;
-                    case -4:
-                        outFrameY[sector_y][sector_x] = (uint8_t)32;
-                        break;
+                        currColorHSV.h = areaGridMarked[sector_y][sector_x] % 255;
+                        currColorRGB = HsvToRgb(currColorHSV);
+                        outFrameY[sector_y][sector_x] = (uint8_t)(CRGB2Y(currColorRGB.r,currColorRGB.g,currColorRGB.b));
+                        outFrameU[sector_y][sector_x] = (uint8_t)(CRGB2Cb(currColorRGB.r, currColorRGB.g, currColorRGB.b));
+                        outFrameV[sector_y][sector_x] = (uint8_t)(CRGB2Cr(currColorRGB.r, currColorRGB.g, currColorRGB.b));
                     }
-                    outFrameU[sector_y >> 1][sector_x >> 1] = (uint8_t)128;
-                    outFrameV[sector_y >> 1][sector_x >> 1] = (uint8_t)128;
+
+                    
                     //sumbmtype output
                     // switch (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x])
                     // {
@@ -261,7 +387,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     WriteFrameToFile(filemask, outFrameY, outFrameU, outFrameV);
 }
 
-void MoveDetector::WriteFrameToFile(FILE *filemask, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE / 2], uint8_t V[][MAX_MAP_SIDE / 2])
+void MoveDetector::WriteFrameToFile(FILE *filemask, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE], uint8_t V[][MAX_MAP_SIDE])
 {
     const unsigned char frameheader[] = {0x46, 0x52, 0x41, 0x4D, 0x45, 0x0A};
     if (USE_YUV2MPEG2)
@@ -290,7 +416,7 @@ void MoveDetector::WriteFrameToFile(FILE *filemask, uint8_t Y[][MAX_MAP_SIDE], u
             {
                 for (i = 0; i < output_block_size * mbPerSectorX / 2; i++)
                 {
-                    fwrite((const void *)&(U[sector_y / 2][sector_x / 2]), sizeof(uint8_t), sizeof(U[sector_y / 2][sector_x / 2]), filemask);
+                    fwrite((const void *)&(U[sector_y][sector_x]), sizeof(uint8_t), sizeof(U[sector_y][sector_x]), filemask);
                 }
             }
         }
@@ -303,7 +429,7 @@ void MoveDetector::WriteFrameToFile(FILE *filemask, uint8_t Y[][MAX_MAP_SIDE], u
             {
                 for (i = 0; i < output_block_size * mbPerSectorX / 2; i++)
                 {
-                    fwrite((const void *)&(V[sector_y / 2][sector_x / 2]), sizeof(uint8_t), sizeof(V[sector_y / 2][sector_x / 2]), filemask);
+                    fwrite((const void *)&(V[sector_y][sector_x]), sizeof(uint8_t), sizeof(V[sector_y][sector_x]), filemask);
                 }
             }
         }
@@ -315,7 +441,7 @@ void MoveDetector::WriteMPEG2Header(FILE *file)
     ostringstream header;
     const unsigned char spacer = {0x20};
     const unsigned char framespacer = {0x0A};
-    header << "YUV4MPEG2" << spacer << "W" << dec_ctx->width << spacer << "H" << dec_ctx->height << spacer;
+    header << "YUV4MPEG2" << spacer << "W" << dec_ctx->coded_width << spacer << "H" << dec_ctx->coded_height << spacer;
     header << "F" << fmt_ctx->streams[video_stream_index]->r_frame_rate.num << ":" << fmt_ctx->streams[video_stream_index]->r_frame_rate.den << spacer;
     header << "Ip" << spacer << "A1:1" << spacer << "C420" << framespacer;
     fwrite((const void *)(header.str().c_str()), sizeof(char), header.str().size(), file);
@@ -324,52 +450,52 @@ void MoveDetector::WriteMPEG2Header(FILE *file)
 void MoveDetector::WriteMapConsole()
 {
     int i, j;
-    fprintf(stderr, "\n\n ==== 2D MAP ====\n");
+    // fprintf(stderr, "\n\n ==== 2D MAP ====\n");
 
-    for (i = 0; i < nSectorsY; i++)
-    {
-        for (j = 0; j < nSectorsX; j++)
-        {
-            //printf("%2.0f ", mvGridMag[i][j]);
-            //printf("%4.0f ", mvGridArg[i][j]);
-            //areaGridMarked[i][j] == 0 ? printf("  .") : fprintf(stdout, "%3d", areaGridMarked[i][j]);
-            // fprintf(stdout, "%3d", bwProjected[i][j].x);
-            //fprintf(stderr, "%2d", areaFgMarked[i][j]);
-            switch (areaFgMarked[i][j])
-            {
-            case 0:
-                fprintf(stderr, "? ");
-                break;
-            case 1:
-                fprintf(stderr, "0 ");
-                break;
-            case -1:
-                fprintf(stderr, ". ");
-                break;
-            case 2:
-                fprintf(stderr, "o ");
-                break;
-            case -2:
-                fprintf(stderr, ", ");
-                break;
-            case 3:
-                fprintf(stderr, "8 ");
-                break;
-            case -3:
-                fprintf(stderr, "_ ");
-                break;
-            case 4:
-                fprintf(stderr, "# ");
-                break;
-            case -4:
-                fprintf(stderr, "\" ");
-                break;
-            }
-        }
-        fprintf(stdout, "\n");
-    }
+    // for (i = 0; i < nSectorsY; i++)
+    // {
+    //     for (j = 0; j < nSectorsX; j++)
+    //     {
+    //         //printf("%2.0f ", mvGridMag[i][j]);
+    //         //printf("%4.0f ", mvGridArg[i][j]);
+    //         //areaGridMarked[i][j] == 0 ? printf("  .") : fprintf(stdout, "%3d", areaGridMarked[i][j]);
+    //         // fprintf(stdout, "%3d", bwProjected[i][j].x);
+    //         fprintf(stderr, "%5d ", areaGridMarked[i][j]);
+    //         // switch (areaFgMarked[i][j])
+    //         // {
+    //         // case 0:
+    //         //     fprintf(stderr, "? ");
+    //         //     break;
+    //         // case 1:
+    //         //     fprintf(stderr, "0 ");
+    //         //     break;
+    //         // case -1:
+    //         //     fprintf(stderr, ". ");
+    //         //     break;
+    //         // case 2:
+    //         //     fprintf(stderr, "o ");
+    //         //     break;
+    //         // case -2:
+    //         //     fprintf(stderr, ", ");
+    //         //     break;
+    //         // case 3:
+    //         //     fprintf(stderr, "8 ");
+    //         //     break;
+    //         // case -3:
+    //         //     fprintf(stderr, "_ ");
+    //         //     break;
+    //         // case 4:
+    //         //     fprintf(stderr, "# ");
+    //         //     break;
+    //         // case -4:
+    //         //     fprintf(stderr, "\" ");
+    //         //     break;
+    //         // }
+    //     }
+    //     fprintf(stdout, "\n");
+    // }
 
-    fprintf(stdout, "\n");
+    // fprintf(stdout, "\n");
 
     // fprintf(stderr, "SIMILARITYBW \n");
     // for (i = 0; i < nSectorsY; i++)
@@ -453,14 +579,14 @@ void MoveDetector::WriteMapConsole()
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
         {
             currId = detectedAreas[i].id;
-            fprintf(stderr, "ID: %3d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f Nonuniformity: %3.2f \n",
+            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f IsTracked: %d \n",
                     detectedAreas[i].id,
                     detectedAreas[i].size,
                     detectedAreas[i].centroidX,
                     detectedAreas[i].centroidY,
                     detectedAreas[i].directionMag,
                     detectedAreas[i].directionAng,
-                    detectedAreas[i].uniformity);
+                    detectedAreas[i].isTracked);
             i++;
         }
         else
@@ -468,4 +594,5 @@ void MoveDetector::WriteMapConsole()
     }
 
     fprintf(stderr, "\n");
-                }
+}
+

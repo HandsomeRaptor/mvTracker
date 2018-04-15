@@ -440,6 +440,7 @@ void MoveDetector::SkipDummyFrame()
 
 void MoveDetector::MainDec()
 {
+    srand(time(NULL));
     int ret;
     count = 0;
     sum = 0;
