@@ -137,7 +137,7 @@ void MoveDetector::MorphologyProcess()
 
     DetectConnectedAreas(mvMask, areaGridMarked);
     ProcessConnectedAreas(areaGridMarked, areaBuffer[BUFFER_CURR(currFrameBuffer)]);
-    TrackAreas(areaBuffer[BUFFER_CURR(currFrameBuffer)], areaBuffer[BUFFER_PREV(currFrameBuffer)]);
+    TrackAreas();
 }
 
 static const char kernelCross[3][3] = {
@@ -369,20 +369,28 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
             sqrt(processedAreas[i].directionX * processedAreas[i].directionX +
                  processedAreas[i].directionY * processedAreas[i].directionY);
         processedAreas[i].id = rand() % 30000 + 1;
+        processedAreas[i].centroidX *= output_block_size;
+        processedAreas[i].centroidY *= output_block_size;
+        processedAreas[i].boundBoxB.x *= output_block_size;
+        processedAreas[i].boundBoxB.y *= output_block_size;
+        processedAreas[i].boundBoxU.x *= output_block_size;
+        processedAreas[i].boundBoxU.y *= output_block_size;
         // processedAreas[i].uniformity = (processedAreas[i].directionXVar + processedAreas[i].directionYVar) * 100;
     }
 }
 
-void MoveDetector::TrackAreas(connectedArea (&currentAreas)[MAX_CONNAREAS], connectedArea (&prevAreas)[MAX_CONNAREAS])
+void MoveDetector::TrackAreas()
 {
     int i = 0, j = 0, u = 0;
-    int den = 4;
-    if (nSectors == 0)
-        den = 16;
-    int sizeTolerance = 512 / den;
+    //int sizeTolerance = 1024 / output_block_size; //blocks
     //const float directionAngTolerance = 45;
-    int searchWindow = 512 / den;
+    int searchWindow = 32; //px
     int areasCounter = 0;
+    const int frameBorderThreshold = 4 * output_block_size; //px
+
+    connectedArea *currentAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
+    connectedArea *prevAreas = areaBuffer[BUFFER_PREV(currFrameBuffer)];
+
     connectedArea *currArea, *prevArea;
     //for each area in current frame
     while (currentAreas[i].id > 0)
@@ -391,14 +399,48 @@ void MoveDetector::TrackAreas(connectedArea (&currentAreas)[MAX_CONNAREAS], conn
         u = 0;
         currArea = &currentAreas[i];
 
+        if (
+            (currArea->boundBoxU.x < frameBorderThreshold) ||
+            (currArea->boundBoxU.x > input_width - frameBorderThreshold) ||
+            (currArea->boundBoxU.y < frameBorderThreshold) ||
+            (currArea->boundBoxU.y > input_height - frameBorderThreshold) ||
+            (currArea->boundBoxB.x < frameBorderThreshold) ||
+            (currArea->boundBoxB.x > input_width - frameBorderThreshold) ||
+            (currArea->boundBoxB.y < frameBorderThreshold) ||
+            (currArea->boundBoxB.y > input_height - frameBorderThreshold))
+        {
+            currArea->areaStatus = AREASTATUS_OUTOFFRAME;
+        }
+
         //iterate over areas in previous frame
         while (prevAreas[j].id > 0)
         {
             prevArea = &prevAreas[j];
-            if (
-                (abs(prevArea->centroidX + prevArea->directionX - currArea->centroidX) < searchWindow) &&
-                (abs(prevArea->centroidY + prevArea->directionY - currArea->centroidY) < searchWindow) &&
-                (abs(prevArea->size - currArea->size) < sizeTolerance) &&
+
+            if (currArea->areaStatus == AREASTATUS_OUTOFFRAME)
+            {
+                coordinate newBoxU = {
+                    prevArea->boundBoxU.x - (int)currArea->directionX - searchWindow,
+                    prevArea->boundBoxU.y - (int)currArea->directionY - searchWindow};
+                coordinate newBoxB = {
+                    prevArea->boundBoxB.x - (int)currArea->directionX + searchWindow,
+                    prevArea->boundBoxB.y - (int)currArea->directionY + searchWindow};
+
+                if (
+                    (currArea->centroidX > newBoxU.x) && (currArea->centroidX < newBoxB.x) &&
+                    (currArea->centroidY > newBoxU.y) && (currArea->centroidY < newBoxB.y) &&
+                    (prevArea->isUsed == false))
+                {
+                    currArea->id = prevArea->id;
+                    currArea->isTracked = true;
+                    prevArea->isUsed = true;
+                    break;
+                }
+            }
+            else if (
+                (abs(prevArea->centroidX - currArea->directionX - currArea->centroidX) < searchWindow) &&
+                (abs(prevArea->centroidY - currArea->directionY - currArea->centroidY) < searchWindow) &&
+                /*(abs(prevArea->size - currArea->size) < sizeTolerance) &&*/
                 (prevArea->isUsed == false))
             {
                 currArea->id = prevArea->id;
@@ -769,7 +811,7 @@ void MoveDetector::CalculateSimilarity(coordinateF currentMV[][MAX_MAP_SIDE], co
 
 void MoveDetector::DetectForeground()
 {
-    const float alpha = 0.7, beta = 8;
+    //const float alpha = 0.7, beta = 4;
     int i, j;
     for (i = 0; i < MAX_MAP_SIDE; i++)
         for (j = 0; j < MAX_MAP_SIDE; j++)

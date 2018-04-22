@@ -46,6 +46,9 @@ MoveDetector::MoveDetector()
     output_height = 0;
     output_block_size = 16;
 
+    alpha = 0.7f;
+    beta = 4.0f;
+
     // ffmpeg
     fmt_ctx = NULL;
     dec_ctx = NULL;
@@ -105,6 +108,8 @@ void MoveDetector::AllocAnalyzeBuffers()
     }
     output_width = nSectorsX * mbPerSectorX * output_block_size;
     output_height = nSectorsY * mbPerSectorY * output_block_size;
+    input_width = dec_ctx->width;
+    input_height = dec_ctx->height;
 }
 
 void MoveDetector::PrepareFrameBuffers()
@@ -269,7 +274,7 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
     // }
 
     MotionFieldProcessing();
-    currFrameBuffer = (currFrameBuffer + 1) % 3;
+    currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
 }
 
 void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
@@ -407,7 +412,7 @@ void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
     //     } // end x sector scan
     // }     // end y sector scan
     MotionFieldProcessing();
-    currFrameBuffer = (currFrameBuffer + 1) % 3;
+    currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
 }
 
 void MoveDetector::MotionFieldProcessing()
@@ -461,7 +466,7 @@ void MoveDetector::MainDec()
     processed_frame = 0;
 
     currFrameBuffer = 0;
-    delayedFrameNumber = -2;
+    delayedFrameNumber = 1 - AREABUFFER_SIZE;
 
     chrono::high_resolution_clock::time_point start_t = chrono::high_resolution_clock::now();
 
@@ -554,20 +559,20 @@ void MoveDetector::Help(void)
             "  -g <n>                  Grid size.\n"
             "                          ex: <16> divides the input frame into a 16x16 grid. Max 120.\n"
             "                          Use <0> to divide into 16x16px blocks instead (default)\n"
-            "                          (temporarily disabled: use 0 for 16x16 and -1 for 4x4 resolution\n\n"
+            "                          (DISABLED: use 0 for 16x16 and -1 for 4x4 resolution\n\n"
             "  -c                      Write output map to console.\n\n"
-            "  -o <filename.yuv>       Write output map to filename.yuv.\n\n"
-            "  -s <n>                  Sensitivity.\n"
-            "                          Divides resulting vector magnitude by <n>.\n\n"
-            "  -a <n>                  Display amplification.\n"
-            "                          Multiplies resulting vector magnitude by <n> (only for .yuv output).\n\n"
+            "  -o <filename.y4m>       Write output map to filename.y4m.\n\n"
             "  -p <n>                  Process only every n-th packet (default: 1).\n\n"
-            "  -t <n>                  Threshold to use for binarization (absolute value). Default: 15\n\n"
             "  -e <element>            Element to use for morphological closing.\n"
-            "                          Can be a 3x3 <cross> (default) or a <square>.\n\n");
+            "                          Can be a 3x3 <cross> (default) or a <square>.\n\n"
+            "  -a <n>                  Alpha for MV preprocessing: interframe similarity threshold.\n"
+            "                          Greater values will reject more MVs if they are not consistent between frames.\n"
+            "                          Ranges from 0 to 100 (default: 70).\n\n"
+            "  -b <n>                  Beta for MV preprocessing: vector magnitude threshold.\n"
+            "                          MVs with magnitude lower than Beta (in px) will be rejected (default: 4).\n\n");
 }
 
-static const char *mvOptions = {"g:o:s:a:p:e:t:c"};
+static const char *mvOptions = {"g:o:p:e:a:b:c"};
 
 void Initialize(int argc, char **argv)
 {
@@ -614,16 +619,16 @@ void Initialize(int argc, char **argv)
             }
             break;
         }
-        case 's':
-        {
-            movedec.sensivity = atoi(optarg);
-            break;
-        }
-        case 'a':
-        {
-            movedec.amplify_yuv = atoi(optarg);
-            break;
-        }
+        // case 's':
+        // {
+        //     movedec.sensivity = atoi(optarg);
+        //     break;
+        // }
+        // case 'a':
+        // {
+        //     movedec.amplify_yuv = atoi(optarg);
+        //     break;
+        // }
         case 'c':
         {
             movedec.movemask_std_flag = 1;
@@ -634,11 +639,11 @@ void Initialize(int argc, char **argv)
             movedec.packet_skip = atoi(optarg);
             break;
         }
-        case 't':
-        {
-            movedec.binThreshold = atoi(optarg);
-            break;
-        }
+        // case 't':
+        // {
+        //     movedec.binThreshold = atoi(optarg);
+        //     break;
+        // }
         case 'e':
         {
             string argElement = optarg;
@@ -646,6 +651,18 @@ void Initialize(int argc, char **argv)
                 movedec.useSquareElement = 1;
             else
                 movedec.useSquareElement = 0;
+            break;
+        }
+        case 'a':
+        {
+            int alpha = atoi(optarg);
+            movedec.alpha = (float)alpha / 100.0f;
+            break;
+        }
+        case 'b':
+        {
+            int beta = atoi(optarg);
+            movedec.beta = (float)beta;
             break;
         }
         }

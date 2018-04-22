@@ -579,14 +579,17 @@ void MoveDetector::WriteMapConsole()
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
         {
             currId = detectedAreas[i].id;
-            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%5.2f %5.2f)  Mag/Angle: %6.2f %6.2f IsTracked: %d \n",
+            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Mag/Angle: %6.2f %6.2f IsTracked: %d Status: %d \n",
                     detectedAreas[i].id,
                     detectedAreas[i].size,
                     detectedAreas[i].centroidX,
                     detectedAreas[i].centroidY,
+                    detectedAreas[i].directionX,
+                    detectedAreas[i].directionY,
                     detectedAreas[i].directionMag,
                     detectedAreas[i].directionAng,
-                    detectedAreas[i].isTracked);
+                    detectedAreas[i].isTracked,
+                    detectedAreas[i].areaStatus);
             i++;
         }
         else

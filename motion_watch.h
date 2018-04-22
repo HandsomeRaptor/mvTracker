@@ -38,12 +38,12 @@ extern "C" {
 #define MAX_MAP_SIDE 500
 #define MAX_FILENAME 600
 #define MAX_CONNAREAS 1000
-#define AREABUFFER_SIZE 3
+#define AREABUFFER_SIZE 5
 #define USE_YUV2MPEG2 1
 
 //default values
 #define BIN_THRESHOLD 10
-#define CONSIST_THRESHOLD 10
+//#define CONSIST_THRESHOLD 10
 #define PACKET_SKIP 1
 #define USE_SQUARE 0
 
@@ -65,9 +65,15 @@ extern "C" {
 #define SUBMB_TYPE_4x8 7
 #define SUBMB_TYPE_4x4 8
 
+#define AREASTATUS_NONE 0
+#define AREASTATUS_INTOFRAME 1
+#define AREASTATUS_OUTOFFRAME 2
+#define AREASTATUS_OCCLUSION 4
+
 #define BUFFER_NEXT(a) a
 #define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
 #define BUFFER_PREV(a) (((a - 2) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
+#define BUFFER_OFFSET(a, b) (((a - 1 - b) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
 
 #define ROLLINGAVG(oldv, newv, lastsize) (newv + lastsize * oldv) / (lastsize + 1)
 
@@ -108,6 +114,7 @@ class MoveDetector
         // coordinateF delta, delta2, M2, normV;
         bool isTracked;
         bool isUsed;
+        unsigned char areaStatus;
     };
 
     // debug file
@@ -146,8 +153,10 @@ class MoveDetector
 	int nBlocksX;
 	int nBlocksY;
 
-	int output_width;
-	int output_height;
+    int input_width;
+    int input_height;
+    int output_width;
+    int output_height;
     int output_block_size;
 
     int mbPerSectorX;
@@ -155,7 +164,10 @@ class MoveDetector
 	int sensivity;
 	int amplify_yuv;
 
-	int mb_stride;
+    float alpha;
+    float beta;
+
+    int mb_stride;
 	int mv_sample_log2;
 	int mv_stride;
 	int quarter_sample;
@@ -201,7 +213,7 @@ class MoveDetector
     void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
-    void TrackAreas(connectedArea (&currentAreas)[MAX_CONNAREAS], connectedArea (&prevAreas)[MAX_CONNAREAS]);
+    void TrackAreas();
     //void SpatialConsistProcess();
 
     void TemporalConsistProcess();
