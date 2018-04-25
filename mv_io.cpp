@@ -155,14 +155,15 @@ void MoveDetector::Close(void)
 
 void MoveDetector::WriteMaskFile(FILE *filemask) {
 
-	uint8_t i, j;
+	int i, j;
+    int u = 0;
     int sector_x, sector_y;
     //uint8_t tmp_table2d_sum[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t outFrameY[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t outFrameU[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t outFrameV[MAX_MAP_SIDE][MAX_MAP_SIDE];
     uint8_t boundBoxType[MAX_MAP_SIDE][MAX_MAP_SIDE];
-    connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
+    connectedArea *detectedAreas = areaBuffer[BUFFER_OLDEST(currFrameBuffer)];
 
     // for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     // {
@@ -248,6 +249,32 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     RgbColor currColorRGB;
     currColorHSV.s = 255;
     currColorHSV.v = 255;
+
+    while (detectedAreas[u].id > 0)
+    {
+        for (i = 0; i < nSectorsY; i++)
+        {
+            for (j = 0; j < nSectorsX; j++)
+            {
+                if (areaGridMarked[i][j])
+                {
+                    if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] == detectedAreas[u].areaID)
+                    {
+                        if (detectedAreas[u].isTracked)
+                        {
+                            areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = detectedAreas[u].id;
+                        }
+                        else
+                        {
+                            areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        u++;
+    }
+
     for (sector_y = 0; sector_y < nSectorsY; sector_y++)
     {
         for (j = 0; j < mbPerSectorY * output_block_size; j++)
@@ -310,9 +337,9 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     outFrameU[sector_y][sector_x] = (uint8_t)128;
                     outFrameV[sector_y][sector_x] = (uint8_t)128;
 
-                    if (areaGridMarked[sector_y][sector_x] > 0)
+                    if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] > 0)
                     {
-                        currColorHSV.h = areaGridMarked[sector_y][sector_x] % 255;
+                        currColorHSV.h = areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] % 255;
                         currColorRGB = HsvToRgb(currColorHSV);
                         outFrameY[sector_y][sector_x] = (uint8_t)(CRGB2Y(currColorRGB.r,currColorRGB.g,currColorRGB.b));
                         outFrameU[sector_y][sector_x] = (uint8_t)(CRGB2Cb(currColorRGB.r, currColorRGB.g, currColorRGB.b));
@@ -573,13 +600,13 @@ void MoveDetector::WriteMapConsole()
     int currId = 1;
     i = 0;
 
-    connectedArea *detectedAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
+    connectedArea *detectedAreas = areaBuffer[BUFFER_OLDEST(currFrameBuffer)];
     while (currId)
     {
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
         {
             currId = detectedAreas[i].id;
-            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Mag/Angle: %6.2f %6.2f IsTracked: %d Status: %d \n",
+            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Mag/Angle: %6.2f %6.2f IsTracked: %d Status: %d Appearances: %d \n",
                     detectedAreas[i].id,
                     detectedAreas[i].size,
                     detectedAreas[i].centroidX,
@@ -589,7 +616,8 @@ void MoveDetector::WriteMapConsole()
                     detectedAreas[i].directionMag,
                     detectedAreas[i].directionAng,
                     detectedAreas[i].isTracked,
-                    detectedAreas[i].areaStatus);
+                    detectedAreas[i].areaStatus,
+                    detectedAreas[i].appearances);
             i++;
         }
         else

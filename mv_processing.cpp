@@ -135,8 +135,8 @@ void MoveDetector::MorphologyProcess()
     //dilate
     ErodeDilate(useSquareElement, MORPH_OP_DILATE, mvMask_temp, mvMask);
 
-    DetectConnectedAreas(mvMask, areaGridMarked);
-    ProcessConnectedAreas(areaGridMarked, areaBuffer[BUFFER_CURR(currFrameBuffer)]);
+    DetectConnectedAreas(mvMask, areaGridMarked[BUFFER_CURR(currFrameBuffer)]);
+    ProcessConnectedAreas(areaGridMarked[BUFFER_CURR(currFrameBuffer)], areaBuffer[BUFFER_CURR(currFrameBuffer)]);
     TrackAreas();
 }
 
@@ -306,6 +306,7 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
                     newArea.boundBoxU = {j, i};
                     newArea.boundBoxB = {j, i};
                     newArea.isTracked = false;
+                    newArea.appearances = 1;
                     // newArea.uniformity = 0;
                     // newArea.normV = {};
                     // newArea.delta = {};
@@ -381,7 +382,7 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
 
 void MoveDetector::TrackAreas()
 {
-    int i = 0, j = 0, u = 0;
+    int i = 0, j = 0, u = 0, v = 0, w = 0;
     //int sizeTolerance = 1024 / output_block_size; //blocks
     //const float directionAngTolerance = 45;
     int searchWindow = 32; //px
@@ -390,6 +391,7 @@ void MoveDetector::TrackAreas()
 
     connectedArea *currentAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
     connectedArea *prevAreas = areaBuffer[BUFFER_PREV(currFrameBuffer)];
+    connectedArea *oldAreas;
 
     connectedArea *currArea, *prevArea;
     //for each area in current frame
@@ -429,10 +431,11 @@ void MoveDetector::TrackAreas()
                 if (
                     (currArea->centroidX > newBoxU.x) && (currArea->centroidX < newBoxB.x) &&
                     (currArea->centroidY > newBoxU.y) && (currArea->centroidY < newBoxB.y) &&
+                    (currArea->size > sizeThreshold) &&
                     (prevArea->isUsed == false))
                 {
                     currArea->id = prevArea->id;
-                    currArea->isTracked = true;
+                    // currArea->isTracked = true;                    
                     prevArea->isUsed = true;
                     break;
                 }
@@ -441,10 +444,11 @@ void MoveDetector::TrackAreas()
                 (abs(prevArea->centroidX - currArea->directionX - currArea->centroidX) < searchWindow) &&
                 (abs(prevArea->centroidY - currArea->directionY - currArea->centroidY) < searchWindow) &&
                 /*(abs(prevArea->size - currArea->size) < sizeTolerance) &&*/
+                (currArea->size > sizeThreshold) &&
                 (prevArea->isUsed == false))
             {
                 currArea->id = prevArea->id;
-                currArea->isTracked = true;
+                // currArea->isTracked = true;
                 prevArea->isUsed = true;
                 break;
             }
@@ -453,23 +457,43 @@ void MoveDetector::TrackAreas()
         i++;
         areasCounter++;
     }
+}
 
-    //FOR FILE OUTPUT ONLY: fill markedAreas with ids instead of areaIDs
-    for (u = 0; u < areasCounter; u++)
+void MoveDetector::TrackedAreasFiltering()
+{
+    int i = 0, j = 0;
+    connectedArea *detectedAreas = areaBuffer[BUFFER_OLDEST(currFrameBuffer)];
+    connectedArea *currentBuffer;
+    vector<connectedArea *> futureAreas;
+
+    while (detectedAreas[i].id > 0)
     {
-        for (i = 0; i < nSectorsY; i++)
+        futureAreas.clear();
+        for (int frameBufferIndex = 0; frameBufferIndex < AREABUFFER_SIZE - 3; frameBufferIndex++)
         {
-            for (j = 0; j < nSectorsX; j++)
+            int bufferid = (currFrameBuffer + 2 + frameBufferIndex) % AREABUFFER_SIZE;
+            currentBuffer = areaBuffer[bufferid];
+            j = 0;
+            while (currentBuffer[j].id > 0)
             {
-                if (areaGridMarked[i][j])
+                if (currentBuffer[j].id == detectedAreas[i].id)
                 {
-                    if (areaGridMarked[i][j] == currentAreas[u].areaID)
-                    {
-                        areaGridMarked[i][j] = currentAreas[u].id;
-                    }
+                    futureAreas.push_back(&currentBuffer[j]);
+                    break;
                 }
+                j++;
             }
         }
+        detectedAreas[i].appearances = futureAreas.size();
+        if (futureAreas.size() > 2)
+        {
+            detectedAreas[i].isTracked = true;            
+            for (int u = 0; u < futureAreas.size(); u++)
+            {
+                futureAreas[u]->isTracked = true;                
+            }
+        }
+        i++;
     }
 }
 

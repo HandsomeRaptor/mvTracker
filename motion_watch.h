@@ -38,7 +38,7 @@ extern "C" {
 #define MAX_MAP_SIDE 500
 #define MAX_FILENAME 600
 #define MAX_CONNAREAS 1000
-#define AREABUFFER_SIZE 5
+#define AREABUFFER_SIZE 6
 #define USE_YUV2MPEG2 1
 
 //default values
@@ -73,7 +73,8 @@ extern "C" {
 #define BUFFER_NEXT(a) a
 #define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
 #define BUFFER_PREV(a) (((a - 2) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
-#define BUFFER_OFFSET(a, b) (((a - 1 - b) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
+#define BUFFER_OFFSET(a, b) (((a - (1 + b)) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
+#define BUFFER_OLDEST(a) (((a + 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
 
 #define ROLLINGAVG(oldv, newv, lastsize) (newv + lastsize * oldv) / (lastsize + 1)
 
@@ -115,6 +116,7 @@ class MoveDetector
         bool isTracked;
         bool isUsed;
         unsigned char areaStatus;
+        int appearances;
     };
 
     // debug file
@@ -130,7 +132,7 @@ class MoveDetector
 	float mvGridMag[MAX_MAP_SIDE][MAX_MAP_SIDE];
 	//coordinate mvGridCoords[MAX_MAP_SIDE][MAX_MAP_SIDE];
 
-	int areaGridMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
+    int areaGridMarked[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
     connectedArea areaBuffer[AREABUFFER_SIZE][MAX_CONNAREAS];
     coordinate mvGridCoords[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
     int subMbTypes[AREABUFFER_SIZE][MAX_MAP_SIDE][MAX_MAP_SIDE];
@@ -166,6 +168,7 @@ class MoveDetector
 
     float alpha;
     float beta;
+    int sizeThreshold;
 
     int mb_stride;
 	int mv_sample_log2;
@@ -214,6 +217,8 @@ class MoveDetector
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
     void TrackAreas();
+    
+    void TrackedAreasFiltering();
     //void SpatialConsistProcess();
 
     void TemporalConsistProcess();

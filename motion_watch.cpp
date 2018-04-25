@@ -48,6 +48,7 @@ MoveDetector::MoveDetector()
 
     alpha = 0.7f;
     beta = 4.0f;
+    sizeThreshold = 0;
 
     // ffmpeg
     fmt_ctx = NULL;
@@ -426,13 +427,18 @@ void MoveDetector::MotionFieldProcessing()
 
         TemporalConsistProcess();
         MorphologyProcess();
+        
+        fprintf(stderr, "motion data for frame %d (output frame %d)\n", currFrameNumber - 1, delayedFrameNumber - AREABUFFER_SIZE + 1);
 
-        fprintf(stderr, "motion data for frame %d (delayed frame %d) \n", currFrameNumber - 1, delayedFrameNumber);
-        if (movemask_std_flag)
-            WriteMapConsole();
+        if (delayedFrameNumber >= AREABUFFER_SIZE - 3)
+        {
+            TrackedAreasFiltering();
+            if (movemask_std_flag)
+                WriteMapConsole();
 
-        if (movemask_file_flag)
-            WriteMaskFile(fvideomask_desc);
+            if (movemask_file_flag)
+                WriteMaskFile(fvideomask_desc);
+        }
     }    
 }
 
@@ -466,7 +472,7 @@ void MoveDetector::MainDec()
     processed_frame = 0;
 
     currFrameBuffer = 0;
-    delayedFrameNumber = 1 - AREABUFFER_SIZE;
+    delayedFrameNumber = 1 - 3;
 
     chrono::high_resolution_clock::time_point start_t = chrono::high_resolution_clock::now();
 
@@ -569,10 +575,12 @@ void MoveDetector::Help(void)
             "                          Greater values will reject more MVs if they are not consistent between frames.\n"
             "                          Ranges from 0 to 100 (default: 70).\n\n"
             "  -b <n>                  Beta for MV preprocessing: vector magnitude threshold.\n"
-            "                          MVs with magnitude lower than Beta (in px) will be rejected (default: 4).\n\n");
+            "                          MVs with magnitude lower than Beta (in px) will be rejected (default: 4).\n\n"
+            "  -s <n>                  Threshold for detected area sizes. Default: 0 blocks (no thresholding).\n"
+            "                          (Temporary solution against smaller local MV noise)\n\n");
 }
 
-static const char *mvOptions = {"g:o:p:e:a:b:c"};
+static const char *mvOptions = {"g:o:p:e:a:b:s:c"};
 
 void Initialize(int argc, char **argv)
 {
@@ -619,11 +627,11 @@ void Initialize(int argc, char **argv)
             }
             break;
         }
-        // case 's':
-        // {
-        //     movedec.sensivity = atoi(optarg);
-        //     break;
-        // }
+        case 's':
+        {
+            movedec.sizeThreshold = atoi(optarg);
+            break;
+        }
         // case 'a':
         // {
         //     movedec.amplify_yuv = atoi(optarg);
@@ -656,12 +664,24 @@ void Initialize(int argc, char **argv)
         case 'a':
         {
             int alpha = atoi(optarg);
+            if ((alpha > 100) || (alpha < 0))
+            {
+                fprintf(stderr, "alpha must be in (0..100)\n");
+                movedec.Help();
+                exit(0);
+            }
             movedec.alpha = (float)alpha / 100.0f;
             break;
         }
         case 'b':
         {
             int beta = atoi(optarg);
+            if (beta < 0)
+            {
+                fprintf(stderr, "beta must be greater than 0\n");
+                movedec.Help();
+                exit(0);
+            }
             movedec.beta = (float)beta;
             break;
         }
@@ -691,7 +711,7 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "Increasing stack size...\n");
 
-    const rlim_t kStackSize = 32 * 1024 * 1024; // 32 MB
+    const rlim_t kStackSize = 64 * 1024 * 1024; // 64 MB
     struct rlimit rl;
     int result;
 
