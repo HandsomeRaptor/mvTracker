@@ -13,11 +13,12 @@
             "program": "${workspaceFolder}/motion_detect",
             "args": [
                 "-g","-1",
-                //"-o","2.y4m",
+                "-o","2.y4m",
                 //"-s","0",
                 //"-a","5",
                 //"-c",
                 //"-p","1",
+                "-s","150",
                 "-c",
                 "/root/Videos/highway_720.mp4"
                 ],

@@ -466,6 +466,7 @@ void MoveDetector::TrackedAreasFiltering()
     connectedArea *currentBuffer;
     vector<connectedArea *> futureAreas;
 
+    //continuity area filtering
     while (detectedAreas[i].id > 0)
     {
         futureAreas.clear();
@@ -487,13 +488,39 @@ void MoveDetector::TrackedAreasFiltering()
         detectedAreas[i].appearances = futureAreas.size();
         if (futureAreas.size() > 2)
         {
-            detectedAreas[i].isTracked = true;            
+            detectedAreas[i].isTracked = true;
             for (int u = 0; u < futureAreas.size(); u++)
             {
-                futureAreas[u]->isTracked = true;                
+                futureAreas[u]->isTracked = true;
+            }
+            int thisID = detectedAreas[i].id;
+            auto existingObject = std::find_if(trackedObjects.begin(), trackedObjects.end(), [&thisID](const trackedObject &x) { return x.id == thisID; });
+            if (existingObject == trackedObjects.end())
+            {
+                trackedObject newObj(detectedAreas[i]);
+                newObj.framesToLive = futureAreas.size() + 3;
+                trackedObjects.push_back(newObj);
+            }
+            else
+            {
+                existingObject->UpdateFromArea(detectedAreas[i]);
+                existingObject->framesToLive = futureAreas.size() + 3;
             }
         }
         i++;
+    }
+
+    //processing tracked objects
+
+    //decrementing TTLs
+    auto it = trackedObjects.begin();
+    while (it != trackedObjects.end())
+    {
+        it->framesToLive--;
+        if (it->framesToLive == 0)
+            it = trackedObjects.erase(it);
+        else
+            ++it;
     }
 }
 

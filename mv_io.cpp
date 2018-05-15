@@ -336,6 +336,8 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     outFrameY[sector_y][sector_x] = (uint8_t)32;
                     outFrameU[sector_y][sector_x] = (uint8_t)128;
                     outFrameV[sector_y][sector_x] = (uint8_t)128;
+                    // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
 
                     if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] > 0)
                     {
@@ -411,6 +413,11 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
             }
         }
     }
+    for (auto const &i : trackedObjects)
+    {
+        outFrameY[int(i.centerY / output_block_size)][int(i.centerX / output_block_size)] = (uint8_t)255;
+    }
+
     WriteFrameToFile(filemask, outFrameY, outFrameU, outFrameV);
 }
 
@@ -622,6 +629,20 @@ void MoveDetector::WriteMapConsole()
         }
         else
             break;
+    }
+
+    fprintf(stderr, "---- Tracked objects ---- \n");
+    for (auto &i : trackedObjects)
+    {
+        fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Status: %d  FTL: %d\n",
+                i.id,
+                i.size,
+                i.centerX,
+                i.centerY,
+                i.directionX,
+                i.directionY,
+                i.objStatus,
+                i.framesToLive);
     }
 
     fprintf(stderr, "\n");

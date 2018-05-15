@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <vector>
+#include <list>
 
 extern "C" {
  #include <libavcodec/avcodec.h>
@@ -119,6 +120,45 @@ class MoveDetector
         int appearances;
     };
 
+    struct trackedObject
+    {
+        int id;
+        int size;
+        coordinate boundBoxU, boundBoxB;
+        float centerX, centerY;
+        float directionX, directionY;
+        unsigned char objStatus;
+        int framesToLive;
+
+        trackedObject()
+        {}
+        trackedObject(connectedArea a)
+        {
+            id = a.id;
+            size = a.size;
+            boundBoxU = a.boundBoxU;
+            boundBoxB = a.boundBoxB;
+            centerX = a.centroidX;
+            centerY = a.centroidY;
+            directionX = a.directionX;
+            directionY = a.directionY;
+            objStatus = a.areaStatus;
+            framesToLive = 0;
+        }
+
+        void UpdateFromArea(connectedArea a)
+        {
+            size = a.size;
+            boundBoxU = a.boundBoxU;
+            boundBoxB = a.boundBoxB;
+            centerX = a.centroidX;
+            centerY = a.centroidY;
+            directionX = a.directionX;
+            directionY = a.directionY;
+            objStatus = a.areaStatus;
+        }
+    };
+
     // debug file
 	FILE *fvideo_desc;
 	FILE *fvideomask_desc;
@@ -143,6 +183,8 @@ class MoveDetector
     float similarityFW[MAX_MAP_SIDE][MAX_MAP_SIDE];
     float similarityBWFW[MAX_MAP_SIDE][MAX_MAP_SIDE];
     int areaFgMarked[MAX_MAP_SIDE][MAX_MAP_SIDE];
+
+    list<trackedObject> trackedObjects;
 
     int currFrameBuffer;
     int delayedFrameNumber;
