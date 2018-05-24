@@ -71,8 +71,8 @@ fi
 mkdir -p "$BUILD_DIR" "$TARGET_DIR"
 
 # FFMpeg
-echo "*** Building FFmpeg 1.2.1 ***"
-cd $BUILD_DIR/ffmpeg-1.2.1
+echo "*** Building FFmpeg 4.0 ***"
+cd $BUILD_DIR/ffmpeg
 
 # add "--prefix=${OUTPUT_DIR:-$TARGET_DIR}" to /make custom install to "target folder"
 CFLAGS="-I$TARGET_DIR/include" LDFLAGS="-L$TARGET_DIR/lib -lm" ./configure --prefix=${OUTPUT_DIR:-$TARGET_DIR} --extra-version=shared --disable-debug --enable-shared --disable-static --extra-cflags=--shared --disable-ffplay --disable-doc --enable-gpl --enable-pthreads --enable-pic --enable-postproc --enable-gray --enable-runtime-cpudetect --enable-nonfree --enable-version3 --disable-devices --disable-swresample --disable-swscale --disable-encoders --disable-filters --disable-hwaccels --disable-decoders --enable-decoder=h264 --disable-demuxers --enable-demuxer=h264 --enable-demuxer=rtp --enable-demuxer=rtsp --enable-demuxer=avi --enable-demuxer=mpegts --enable-demuxer=aac --enable-demuxer=mp3 --disable-muxers --enable-muxer=matroska --enable-muxer=mp4 --enable-muxer=avi --enable-muxer=mpeg2video --enable-muxer=mpegts --enable-muxer=rtp --enable-muxer=rtsp --disable-bzlib --disable-zlib

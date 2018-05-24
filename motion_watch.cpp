@@ -53,7 +53,7 @@ MoveDetector::MoveDetector()
     // ffmpeg
     fmt_ctx = NULL;
     dec_ctx = NULL;
-    frame = avcodec_alloc_frame();
+    frame = av_frame_alloc();
     if (!frame)
     {
         fprintf(stderr, "Could not allocate frame\n");
@@ -80,10 +80,6 @@ void MoveDetector::AllocAnalyzeBuffers()
     nBlocksX = (dec_ctx->width + 15) / 16;
     nBlocksY = (dec_ctx->height + 15) / 16;
     mb_stride = nBlocksX + 1;
-    mv_sample_log2 = 4 - frame->motion_subsample_log2;
-    mv_stride = (nBlocksX << mv_sample_log2) + (dec_ctx->codec_id == CODEC_ID_H264 ? 0 : 1);
-    quarter_sample = (dec_ctx->flags & CODEC_FLAG_QPEL) != 0;
-    shift = 1 + quarter_sample;
 
     if (nSectors > 0)
     {
@@ -131,7 +127,7 @@ void MoveDetector::PrepareFrameBuffers()
     }
 }
 
-void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
+/* void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 {
     int i, j, type, processed_frame;
     int mb_index, xy, dx, dy, mb_x, mb_y;
@@ -276,142 +272,81 @@ void MoveDetector::MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx)
 
     MotionFieldProcessing();
     currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
-}
+} */
 
 void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
 {
-    int i, j, type, processed_frame;
-    int mb_index, xy, dx, dy, mb_x, mb_y;
-    uint8_t sector_x, sector_y, mb_sect_y, mb_sect_x;
+    int i;
+    int mb_x, mb_y;
     int subBlockY, subBlockX;
     const int subBlocksY = nSectorsY, subBlocksX = nSectorsX;
-    uint32_t mbType;
-    bool isIntra;
-    //int sumx, sumy, nVectors;
+    int mv_x, mv_y;
 
-    // prepare new array before
+    AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
+    if (!sd)
+        return;
+    const AVMotionVector *mvs = (const AVMotionVector *)sd->data;
+    int mvsCount = sd->size / sizeof(*mvs);
+
+    const int is_iframe = frame->pict_type == AV_PICTURE_TYPE_I;
+    const int is_pframe = frame->pict_type == AV_PICTURE_TYPE_P;
+    const int is_bframe = frame->pict_type == AV_PICTURE_TYPE_B;
+
     PrepareFrameBuffers();
 
-    if (!pict->motion_val)
-        return;
-    
-    // for (sector_y = 0; sector_y < nSectorsY; sector_y++)
-    // {
-    //     for (sector_x = 0; sector_x < nSectorsX; sector_x++)
-    //     {
-    //         sumx = 0;
-    //         sumy = 0;
-    //         nVectors = 0;
-    for (subBlockY = 0; subBlockY < subBlocksY; subBlockY++)
+    for (int mvIndex = 0; mvIndex < mvsCount; mvIndex++)
     {
-        for (subBlockX = 0; subBlockX < subBlocksX; subBlockX++)
+        const AVMotionVector *mv = &mvs[mvIndex];
+        const int direction = mv->source > 0;
+
+        if ((direction == 0 && is_pframe) ||
+            (direction == 0 && is_bframe) ||
+            (direction == 1 && is_bframe))
         {
-            mb_x = subBlockX / 4;
-            mb_y = subBlockY / 4;
-            mb_index = mb_x + mb_y * mb_stride;
-
-            mbType = pict->mb_type[mb_index];
-            isIntra = IS_INTRA(mbType);
-
-            for (type = 0; type < 3; type++)
+            mv_x = mv->src_x - mv->dst_x;
+            mv_y = mv->src_x - mv->dst_y;
+            //16x16
+            if (mv->w == 16 && mv->h == 16)
             {
-                int direction = 0;
-                switch (type)
+                subBlockX = mv->dst_x / 16 * 4;
+                subBlockY = mv->dst_y / 16 * 4;
+                for (i = 0; i < 16; i++)
                 {
-                case 0:
-                    if (pict->pict_type != FF_P_TYPE)
-                        continue;
-                    direction = 0;
-                    break;
-                case 1:
-                    if (pict->pict_type != FF_B_TYPE)
-                        continue;
-                    direction = 0;
-                    break;
-                case 2:
-                    if (pict->pict_type != FF_B_TYPE)
-                        continue;
-                    direction = 1;
-                    break;
+                    mvGridCoords[currFrameBuffer][subBlockY + (i >> 2)][subBlockX + (i & 3)] = {mv_x, mv_y};
                 }
-
-                if (IS_8X8(pict->mb_type[mb_index]))
+            }
+            //16x8
+            else if (mv->w == 16 && mv->h == 8)
+            {
+                subBlockX = mv->dst_x / 16 * 4;
+                subBlockY = mv->dst_y / 8 * 2;
+                for (i = 0; i < 8; i++)
                 {
-                    for (i = 0; i < 4; i++)
-                    {
-                        // xy = (mb_x * 2 + (i & 3) + (mb_y * 2 + (i >> 1)) * mv_stride) << (mv_sample_log2 - 1);
-                        //xy = ((mb_x + (mb_y + (subBlockY & 3)) * mv_stride) << (mv_sample_log2)) + 1;
-                        xy = (subBlockX + i) + subBlockY * mv_stride;
-                        dx = (pict->motion_val[direction][xy][0] >> shift);
-                        dy = (pict->motion_val[direction][xy][1] >> shift);
-                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
-                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = (isIntra && dx == 0 && dy == 0)
-                                                                                    ? SUBMB_TYPE_INTRA
-                                                                                    : SUBMB_TYPE_8x8;
-                    }
-                    subBlockX += 3;
+                    mvGridCoords[currFrameBuffer][subBlockY + (i >> 2)][subBlockX + (i & 3)] = {mv_x, mv_y};
                 }
-                //16x8 MB: fill this row based on whichever subpartition this row is in
-                //and skip to next MB on the right
-                else if (IS_16X8(pict->mb_type[mb_index]))
-                {              
-                    xy = (mb_x * 2 + (mb_y * 2 + ((subBlockY >> 1) & 1)) * mv_stride) << (mv_sample_log2 - 1);
-                    
-                    dx = (pict->motion_val[direction][xy][0] >> shift);
-                    dy = (pict->motion_val[direction][xy][1] >> shift);
-                    if (IS_INTERLACED(pict->mb_type[mb_index]))
-                    {
-                        dy *= 2;
-                    }
-                    for (i = 0; i < 4; i++)
-                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
-                    for (i = 0; i < 4; i++)
-                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = (isIntra && dx == 0 && dy == 0)
-                                                                                    ? SUBMB_TYPE_INTRA
-                                                                                    : SUBMB_TYPE_16x8;
-                    subBlockX += 3;
-                }
-                //8x16 MB: fill two subblocks with the left partition MV and two with the right
-                //and skip to next MB on the right
-                else if (IS_8X16(pict->mb_type[mb_index]))
+            }
+            //8x16
+            else if (mv->w == 8 && mv->h == 16)
+            {
+                subBlockX = mv->dst_x / 8 * 2;
+                subBlockY = mv->dst_y / 16 * 4;
+                for (i = 0; i < 8; i++)
                 {
-                    for (i = 0; i < 2; i++)
-                    {
-                        xy = (mb_x * 2 + i + mb_y * 2 * mv_stride) << (mv_sample_log2 - 1);
-                        dx = (pict->motion_val[direction][xy][0] >> shift);
-                        dy = (pict->motion_val[direction][xy][1] >> shift);
-                        if (IS_INTERLACED(pict->mb_type[mb_index]))
-                        {
-                            dy *= 2;
-                        }
-                        for (j = 0; j < 2; j++)
-                            mvGridCoords[currFrameBuffer][subBlockY][subBlockX + j + (i << 1)] = {dx, dy};
-                        for (j = 0; j < 2; j++)
-                            subMbTypes[currFrameBuffer][subBlockY][subBlockX + j + (i << 1)] = (isIntra && dx == 0 && dy == 0)
-                                                                                                   ? SUBMB_TYPE_INTRA
-                                                                                                   : SUBMB_TYPE_8x16;
-                    }
-                    subBlockX += 3;
+                    mvGridCoords[currFrameBuffer][subBlockY + (i >> 1)][subBlockX + (i & 1)] = {mv_x, mv_y};
                 }
-                //16x16 MB: set this row of subblock vectors to the one in MB
-                //and skip to next MB on the right
-                else
-                {                    
-                    xy = (mb_x + mb_y * mv_stride) << mv_sample_log2;
-                    dx = (pict->motion_val[direction][xy][0] >> shift);
-                    dy = (pict->motion_val[direction][xy][1] >> shift);
-                    for (i = 0; i < 4; i++)
-                        mvGridCoords[currFrameBuffer][subBlockY][subBlockX + i] = {dx, dy};
-                    for (i = 0; i < 4; i++)
-                        subMbTypes[currFrameBuffer][subBlockY][subBlockX + i] = isIntra ? SUBMB_TYPE_INTRA : SUBMB_TYPE_16x16;
-                    subBlockX += 3;
+            }
+            //8x8
+            else if (mv->w == 8 && mv->h == 8)
+            {
+                subBlockX = mv->dst_x / 8 * 2;
+                subBlockY = mv->dst_y / 8 * 2;
+                for (i = 0; i < 4; i++)
+                {
+                    mvGridCoords[currFrameBuffer][subBlockY + (i >> 1)][subBlockX + (i & 1)] = {mv_x, mv_y};
                 }
-            }     // type (0...2)
-        }         // end x macroblock
-    }             // end y macroblock
-    //         mvGridCoords[currFrameBuffer][sector_y][sector_x] = {sumx / nVectors, sumy / nVectors};
-    //     } // end x sector scan
-    // }     // end y sector scan
+            }
+        }
+    }
     MotionFieldProcessing();
     currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
 }
@@ -462,10 +397,6 @@ void MoveDetector::MainDec()
         perror("Could not allocate frame");
     }
 
-    dec_ctx->skip_loop_filter = AVDISCARD_ALL; // 1m12s -> 54s
-    dec_ctx->flags2 |= CODEC_FLAG2_FAST;       // did nothing
-    dec_ctx->flags |= CODEC_FLAG_GRAY;         // 55s->46s
-
     // read all packets
     int packet_n = 1;
     currFrameNumber = 0;
@@ -481,17 +412,16 @@ void MoveDetector::MainDec()
 
     while (1)
     {
-        //AVFilterBufferRef *picref;
         if ((ret = av_read_frame(fmt_ctx, &packet)) < 0)
             break;
 
-        // if (packet.stream_index == video_stream_index) {
         if (packet.stream_index == video_stream_index && ((packet_n % packet_skip == 0) || (packet_n < 10)))
         {
-            avcodec_get_frame_defaults(frame);
+            // avcodec_get_frame_defaults(frame);
             got_frame = 0;
 
-            ret = avcodec_decode_video2(dec_ctx, frame, &got_frame, &packet);
+            // ret = avcodec_decode_video2(dec_ctx, frame, &got_frame, &packet);
+            ret = decode(dec_ctx, frame, &got_frame, &packet);
             if (ret < 0)
             {
                 av_log(NULL, AV_LOG_ERROR, "Error decoding video\n");
@@ -512,7 +442,8 @@ void MoveDetector::MainDec()
 
                     // one thread ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                     if (nSectors >= 0)
-                        MvScanFrame(packet_n, frame, dec_ctx);
+                        // MvScanFrame(packet_n, frame, dec_ctx);
+                        throw std::runtime_error("Can only wheelchair with -g -1");
                     else
                         MvScanFrameH(packet_n, frame, dec_ctx);
                     delayedFrameNumber++;
@@ -578,6 +509,7 @@ void MoveDetector::Help(void)
             "                          MVs with magnitude lower than Beta (in px) will be rejected (default: 4).\n\n"
             "  -s <n>                  Threshold for detected area sizes. Default: 0 blocks (no thresholding).\n"
             "                          (Temporary solution against smaller local MV noise)\n\n");
+    fprintf(stderr, "Using libavcodec version %d.%d.%d \n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR, LIBAVCODEC_VERSION_MICRO);
 }
 
 static const char *mvOptions = {"g:o:p:e:a:b:s:c"};
