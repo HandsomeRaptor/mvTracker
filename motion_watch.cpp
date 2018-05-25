@@ -304,7 +304,7 @@ void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
             (direction == 1 && is_bframe))
         {
             mv_x = mv->src_x - mv->dst_x;
-            mv_y = mv->src_x - mv->dst_y;
+            mv_y = mv->src_y - mv->dst_y;
             //16x16
             if (mv->w == 16 && mv->h == 16)
             {
