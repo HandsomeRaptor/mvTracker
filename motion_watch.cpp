@@ -346,9 +346,7 @@ void MoveDetector::MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx)
                 }
             }
         }
-    }
-    MotionFieldProcessing();
-    currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
+    }    
 }
 
 void MoveDetector::MotionFieldProcessing()
@@ -374,7 +372,8 @@ void MoveDetector::MotionFieldProcessing()
             if (movemask_file_flag)
                 WriteMaskFile(fvideomask_desc);
         }
-    }    
+    }
+    currFrameBuffer = (currFrameBuffer + 1) % AREABUFFER_SIZE;
 }
 
 void MoveDetector::SkipDummyFrame()
@@ -401,6 +400,7 @@ void MoveDetector::MainDec()
     int packet_n = 1;
     currFrameNumber = 0;
     processed_frame = 0;
+    int64_t duration_processing = 0;
 
     currFrameBuffer = 0;
     delayedFrameNumber = 1 - 3;
@@ -446,6 +446,12 @@ void MoveDetector::MainDec()
                         throw std::runtime_error("Can only wheelchair with -g -1");
                     else
                         MvScanFrameH(packet_n, frame, dec_ctx);
+
+                    chrono::high_resolution_clock::time_point start_t_processing = chrono::high_resolution_clock::now();
+                    MotionFieldProcessing();
+                    chrono::high_resolution_clock::time_point end_t_processing = chrono::high_resolution_clock::now();
+                    duration_processing += chrono::duration_cast<chrono::microseconds>(end_t_processing - start_t_processing).count();
+
                     delayedFrameNumber++;
                     processed_frame++;
                     // if (movemask_file_flag)
@@ -468,7 +474,8 @@ void MoveDetector::MainDec()
     chrono::high_resolution_clock::time_point end_t = chrono::high_resolution_clock::now();
     int64_t duration = chrono::duration_cast<chrono::microseconds>( end_t - start_t ).count();
     fprintf(stderr, "Total frames processed: %d\n", processed_frame);
-    fprintf(stderr, "Execution time = %f\n", double(duration) / 1000000.0f);
+    fprintf(stderr, "Total execution time = %f sec\n", double(duration) / 1000000.0f);
+    fprintf(stderr, "MV processing time = %f sec (%4.2f percent of total time)\n", double(duration_processing) / 1000000.0f, (double)duration_processing / (double)duration * 100.0f);
     fprintf(stderr, "Average FPS: %4.3f\n", (double)processed_frame * 1000000.0f / double(duration));
     fprintf(stderr, "Video resolution: %dx%d; Framerate: %2.2f\n", dec_ctx->width, dec_ctx->height,
             (float)fmt_ctx->streams[video_stream_index]->r_frame_rate.num / fmt_ctx->streams[video_stream_index]->r_frame_rate.den);
