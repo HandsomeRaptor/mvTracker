@@ -135,7 +135,7 @@ void MoveDetector::MorphologyProcess()
     //dilate
     ErodeDilate(useSquareElement, MORPH_OP_DILATE, mvMask_temp, mvMask);
 
-    DetectConnectedAreas(mvMask, areaGridMarked[BUFFER_CURR(currFrameBuffer)]);
+    DetectConnectedAreas2(mvMask, areaGridMarked[BUFFER_CURR(currFrameBuffer)]);
     ProcessConnectedAreas(areaGridMarked[BUFFER_CURR(currFrameBuffer)], areaBuffer[BUFFER_CURR(currFrameBuffer)]);
     TrackAreas();
 }
@@ -257,6 +257,50 @@ void MoveDetector::DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*o
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+void MoveDetector::DetectConnectedAreas2(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE])
+{
+    int i, j, u, v;
+
+    for (j = 0; j < MAX_MAP_SIDE; ++j)
+        for (i = 0; i < MAX_MAP_SIDE; ++i)
+        {
+            outputArray[i][j] = 0;
+        }
+
+    std::stack<coordinate> blocks;
+    coordinate top;
+    int currentLabel = 1;
+
+    for (i = 0; i < nSectorsY; i++)
+    {
+        for (j = 0; j < nSectorsX; j++)
+        {
+            if (!outputArray[i][j] && inputArray[i][j])
+            {
+                blocks.push({j, i});
+                while (!blocks.empty())
+                {
+                    top = blocks.top();
+                    blocks.pop();
+
+                    if ((top.x >= 0 && top.y >= 0) &&
+                        (top.x < nSectorsX && top.y < nSectorsY) &&
+                        (!outputArray[top.y][top.x]) &&
+                        (inputArray[top.y][top.x]))
+                    {
+                        outputArray[top.y][top.x] = currentLabel;
+                        blocks.push({top.x + 1, top.y});
+                        blocks.push({top.x - 1, top.y});
+                        blocks.push({top.x, top.y + 1});
+                        blocks.push({top.x, top.y - 1});
+                    }
+                }
+                currentLabel++;
             }
         }
     }

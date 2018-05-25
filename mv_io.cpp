@@ -131,16 +131,56 @@ int MoveDetector::OpenVideoFile(const char *video_name)
         return ret;
     }
     video_stream_index = ret;
-    dec_ctx = fmt_ctx->streams[video_stream_index]->codec;
-    if (!dec_ctx) {
+    dec_ctx = avcodec_alloc_context3(NULL);
+    if (!dec_ctx)
+    {
+        av_log(NULL, AV_LOG_INFO, "FFMpeg: cannot allocate a AVCodecContext\n");
+        return ret;
+    }
+    ret = avcodec_parameters_to_context(dec_ctx, fmt_ctx->streams[video_stream_index]->codecpar);
+    if (ret) {
         av_log(NULL, AV_LOG_INFO, "FFMpeg: context is NULL, exiting..\n");
         return ret;
     }
-    // init the video decoder
-    if ((ret = avcodec_open2(dec_ctx, dec, NULL)) < 0) {
-        av_log(NULL, AV_LOG_INFO, "FFMpeg: cannot open video decoder\n");
-        return ret;
+    AVDictionary *opts = 0;
+    av_dict_set(&opts, "flags2", "+export_mvs", 0);
+    if (avcodec_open2(dec_ctx, dec, &opts) < 0)
+    {
+        throw std::runtime_error("Failed to open codec");
     }
+
+    if (AV_CODEC_ID_H264 == dec_ctx->codec_id)
+    {    
+        dec_ctx->flags2 |= AV_CODEC_FLAG2_CHUNKS;
+        dec_ctx->flags2 |= AV_CODEC_FLAG2_FAST;
+        dec_ctx->flags |= AV_CODEC_FLAG_GRAY;
+        dec_ctx->skip_loop_filter = AVDISCARD_ALL;
+        dec_ctx->skip_idct = AVDISCARD_ALL;
+    }
+
+    return 0;
+}
+
+int MoveDetector::decode(AVCodecContext *avctx, AVFrame *frame, int *got_frame, AVPacket *pkt)
+{
+    int ret;
+
+    *got_frame = 0;
+
+    if (pkt)
+    {
+        ret = avcodec_send_packet(avctx, pkt);
+        // In particular, we don't expect AVERROR(EAGAIN), because we read all
+        // decoded frames with avcodec_receive_frame() until done.
+        if (ret < 0)
+            return ret == AVERROR_EOF ? 0 : ret;
+    }
+
+    ret = avcodec_receive_frame(avctx, frame);
+    if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+        return ret;
+    if (ret >= 0)
+        *got_frame = 1;
 
     return 0;
 }
@@ -283,61 +323,9 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
             {
                 for (i = 0; i < output_block_size * mbPerSectorX; i++)
                 {
-                    // tmp_table2d_sum[sector_x][sector_y] = (uint8_t) mvGridSum[sector_x][sector_y]*amplify_yuv;		// change amplify
-                    // fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
-
-                    //vector arg output
-                    //coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
-                    //coordinateF *v = &(bwProjected[sector_y][sector_x]);
-
-                    // if (v->x || v->y)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)(((atan2f(v->y, v->x) * (float)180 / (float)M_PI + (float)180) / 540.0f + 0.25f) * amplify_yuv);
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-
-                    //vector mag output
-                    //outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
-
-                    //similarity output
-                    //outFrameY[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
-
-                    //markedFg output
-                    // switch (areaFgMarked[sector_y][sector_x])
-                    // {
-                    // case 0:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 1:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -1:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 2:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -2:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 3:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -3:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
-                    //     break;
-                    // case -4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)32;
-                    //     break;
-                    // }
-
                     outFrameY[sector_y][sector_x] = (uint8_t)32;
                     outFrameU[sector_y][sector_x] = (uint8_t)128;
                     outFrameV[sector_y][sector_x] = (uint8_t)128;
-                    // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
-                    // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
 
                     if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] > 0)
                     {
@@ -348,67 +336,13 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                         outFrameV[sector_y][sector_x] = (uint8_t)(CRGB2Cr(currColorRGB.r, currColorRGB.g, currColorRGB.b));
                     }
 
-                    
-                    //sumbmtype output
-                    // switch (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x])
-                    // {
-                    // case SUBMB_TYPE_INTRA:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case SUBMB_TYPE_16x16:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_16x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_8x16:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_8x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
-                    //     break;
-                    // case SUBMB_TYPE_8x4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_4x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_4x4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // }
 
-                    //after morph
-                    // if (areaGridMarked[sector_y][sector_x] > 0)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    // outFrameU[sector_y][sector_x] = (uint8_t)128;
+                    // outFrameV[sector_y][sector_x] = (uint8_t)128;
+                    // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(areaGridMarked[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] * 20);
 
-                    // if (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] == SUBMB_TYPE_INTRA)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-
-                    // if (
-                    //     (j == 0 && boundBoxType[sector_y][sector_x] == 1) ||
-                    //     (j == 15 && boundBoxType[sector_y][sector_x] == 2) ||
-                    //     (i == 0 && boundBoxType[sector_y][sector_x] == 3) ||
-                    //     (i == 15 && boundBoxType[sector_y][sector_x] == 4))
-                    // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
-                    // else if (
-                    //     (j == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 6)) ||
-                    //     (j == 15 && (boundBoxType[sector_y][sector_x] == 7 || boundBoxType[sector_y][sector_x] == 8)) ||
-                    //     (i == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 7)) ||
-                    //     (i == 15 && (boundBoxType[sector_y][sector_x] == 6 || boundBoxType[sector_y][sector_x] == 8)))
-                    // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
-                    // else
-                    // {
-                        // fwrite((const void *)&(outFrameY[sector_y][sector_x]), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
                 }
             }
         }

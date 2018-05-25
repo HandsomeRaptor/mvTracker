@@ -9,12 +9,15 @@
 #include <vector>
 #include <list>
 
-extern "C" {
- #include <libavcodec/avcodec.h>
- #include <libavformat/avformat.h>
- #include <libavfilter/avcodec.h>
- #include <libavfilter/buffersink.h>
- #include <libavfilter/buffersrc.h>
+extern "C"
+{
+#include <libavcodec/avcodec.h>
+#include <libavfilter/avcodec.h>
+// #include <libavfilter/buffersink.h>
+// #include <libavfilter/buffersrc.h>
+#include <libavformat/avformat.h>
+#include <libavutil/motion_vector.h>
+#include <libavutil/avutil.h>
 }
 
 #define IS_INTERLACED(a) 	((a)&MB_TYPE_INTERLACED)
@@ -219,7 +222,7 @@ class MoveDetector
 	int shift;
 
 	// ffmpeg data
-	AVFormatContext *fmt_ctx;
+    AVFormatContext *fmt_ctx;
 	AVCodecContext *dec_ctx;
 	AVFrame *frame;
 	AVPacket packet;
@@ -243,9 +246,10 @@ class MoveDetector
 	void AllocBuffers(void);
 	void AllocAnalyzeBuffers(void);
 	int OpenVideoFile(const char *filename);
+    int decode(AVCodecContext *avctx, AVFrame *frame, int *got_frame, AVPacket *pkt);
 
-	void MainDec();
-	void MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx);
+    void MainDec();
+    void MvScanFrame(int index, AVFrame *pict, AVCodecContext *ctx);
     void MvScanFrameH(int index, AVFrame *pict, AVCodecContext *ctx);
 
     void Close(void);
@@ -257,7 +261,8 @@ class MoveDetector
     void MorphologyProcess();
     void ErodeDilate(int kernelSize, int operation, int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
-	void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
+    void DetectConnectedAreas2(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
+    void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
     void TrackAreas();
     
     void TrackedAreasFiltering();
