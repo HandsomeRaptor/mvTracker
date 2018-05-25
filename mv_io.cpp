@@ -318,61 +318,9 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
             {
                 for (i = 0; i < output_block_size * mbPerSectorX; i++)
                 {
-                    // tmp_table2d_sum[sector_x][sector_y] = (uint8_t) mvGridSum[sector_x][sector_y]*amplify_yuv;		// change amplify
-                    // fwrite((const void *)&(tmp_table2d_sum[sector_x][sector_y]), sizeof(uint8_t), sizeof(tmp_table2d_sum[sector_x][sector_y]), filemask);
-
-                    //vector arg output
-                    //coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
-                    //coordinateF *v = &(bwProjected[sector_y][sector_x]);
-
-                    // if (v->x || v->y)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)(((atan2f(v->y, v->x) * (float)180 / (float)M_PI + (float)180) / 540.0f + 0.25f) * amplify_yuv);
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-
-                    //vector mag output
-                    //outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 100);
-
-                    //similarity output
-                    //outFrameY[sector_y][sector_x] = (uint8_t)(similarityBWFW[sector_y][sector_x] * 255.0f);
-
-                    //markedFg output
-                    // switch (areaFgMarked[sector_y][sector_x])
-                    // {
-                    // case 0:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 1:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -1:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 2:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -2:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 3:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case -3:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case 4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
-                    //     break;
-                    // case -4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)32;
-                    //     break;
-                    // }
-
                     outFrameY[sector_y][sector_x] = (uint8_t)32;
                     outFrameU[sector_y][sector_x] = (uint8_t)128;
                     outFrameV[sector_y][sector_x] = (uint8_t)128;
-                    // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
-                    // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
 
                     if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] > 0)
                     {
@@ -383,67 +331,13 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                         outFrameV[sector_y][sector_x] = (uint8_t)(CRGB2Cr(currColorRGB.r, currColorRGB.g, currColorRGB.b));
                     }
 
-                    
-                    //sumbmtype output
-                    // switch (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x])
-                    // {
-                    // case SUBMB_TYPE_INTRA:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    //     break;
-                    // case SUBMB_TYPE_16x16:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_16x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_8x16:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_8x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)128;
-                    //     break;
-                    // case SUBMB_TYPE_8x4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_4x8:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // case SUBMB_TYPE_4x4:
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    //     break;
-                    // }
 
-                    //after morph
-                    // if (areaGridMarked[sector_y][sector_x] > 0)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
+                    // outFrameU[sector_y][sector_x] = (uint8_t)128;
+                    // outFrameV[sector_y][sector_x] = (uint8_t)128;
+                    // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(areaGridMarked[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] * 20);
 
-                    // if (subMbTypes[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] == SUBMB_TYPE_INTRA)
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)0;
-                    // else
-                    //     outFrameY[sector_y][sector_x] = (uint8_t)255;
-
-                    // if (
-                    //     (j == 0 && boundBoxType[sector_y][sector_x] == 1) ||
-                    //     (j == 15 && boundBoxType[sector_y][sector_x] == 2) ||
-                    //     (i == 0 && boundBoxType[sector_y][sector_x] == 3) ||
-                    //     (i == 15 && boundBoxType[sector_y][sector_x] == 4))
-                    // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
-                    // else if (
-                    //     (j == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 6)) ||
-                    //     (j == 15 && (boundBoxType[sector_y][sector_x] == 7 || boundBoxType[sector_y][sector_x] == 8)) ||
-                    //     (i == 0 && (boundBoxType[sector_y][sector_x] == 5 || boundBoxType[sector_y][sector_x] == 7)) ||
-                    //     (i == 15 && (boundBoxType[sector_y][sector_x] == 6 || boundBoxType[sector_y][sector_x] == 8)))
-                    // {
-                    //     fwrite((const void *)&(boxY), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
-                    // else
-                    // {
-                        // fwrite((const void *)&(outFrameY[sector_y][sector_x]), sizeof(uint8_t), sizeof(outFrameY[sector_y][sector_x]), filemask);
-                    // }
                 }
             }
         }
