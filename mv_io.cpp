@@ -131,12 +131,17 @@ int MoveDetector::OpenVideoFile(const char *video_name)
         return ret;
     }
     video_stream_index = ret;
-    dec_ctx = fmt_ctx->streams[video_stream_index]->codec;
-    if (!dec_ctx) {
+    dec_ctx = avcodec_alloc_context3(NULL);
+    if (!dec_ctx)
+    {
+        av_log(NULL, AV_LOG_INFO, "FFMpeg: cannot allocate a AVCodecContext\n");
+        return ret;
+    }
+    ret = avcodec_parameters_to_context(dec_ctx, fmt_ctx->streams[video_stream_index]->codecpar);
+    if (ret) {
         av_log(NULL, AV_LOG_INFO, "FFMpeg: context is NULL, exiting..\n");
         return ret;
     }
-
     AVDictionary *opts = 0;
     av_dict_set(&opts, "flags2", "+export_mvs", 0);
     if (avcodec_open2(dec_ctx, dec, &opts) < 0)

@@ -71,8 +71,8 @@ MoveDetector::~MoveDetector()
 
 void MoveDetector::AllocBuffers(void)
 {
-    avcodec_register_all();
-    av_register_all();
+    // avcodec_register_all();
+    // av_register_all();
 }
 
 void MoveDetector::AllocAnalyzeBuffers() 
@@ -468,7 +468,7 @@ void MoveDetector::MainDec()
             }
         }
         ++packet_n;
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
     }
 
     chrono::high_resolution_clock::time_point end_t = chrono::high_resolution_clock::now();
@@ -521,7 +521,7 @@ void Initialize(int argc, char **argv)
 {
     MoveDetector movedec;
 
-    movedec.AllocBuffers();
+    // movedec.AllocBuffers();
 
     if (argc == 1)
     {
