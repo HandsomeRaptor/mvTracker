@@ -500,10 +500,6 @@ void MoveDetector::Help(void)
     fprintf(stderr,
             "Usage: motion_detect [options] input_stream\n"
             "Options:\n\n"
-            "  -g <n>                  Grid size.\n"
-            "                          ex: <16> divides the input frame into a 16x16 grid. Max 120.\n"
-            "                          Use <0> to divide into 16x16px blocks instead (default)\n"
-            "                          (DISABLED: use 0 for 16x16 and -1 for 4x4 resolution\n\n"
             "  -c                      Write output map to console.\n\n"
             "  -o <filename.y4m>       Write output map to filename.y4m.\n\n"
             "  -p <n>                  Process only every n-th packet (default: 1).\n\n"
@@ -519,7 +515,7 @@ void MoveDetector::Help(void)
     fprintf(stderr, "Using libavcodec version %d.%d.%d \n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR, LIBAVCODEC_VERSION_MICRO);
 }
 
-static const char *mvOptions = {"g:o:p:e:a:b:s:c"};
+static const char *mvOptions = {"o:p:e:a:b:s:c"};
 
 void Initialize(int argc, char **argv)
 {
@@ -539,18 +535,18 @@ void Initialize(int argc, char **argv)
     {
         switch (opt)
         {
-        case 'g':
-        {
-            int gsector_size = atoi(optarg);
-            if (gsector_size > MAX_MAP_SIDE)
-            {
-                fprintf(stderr, "sector size cannot be greater than %d\n", MAX_MAP_SIDE);
-                movedec.Help();
-                exit(0);
-            }
-            movedec.nSectors = gsector_size;
-            break;
-        }
+        // case 'g':
+        // {
+        //     int gsector_size = atoi(optarg);
+        //     if (gsector_size > MAX_MAP_SIDE)
+        //     {
+        //         fprintf(stderr, "sector size cannot be greater than %d\n", MAX_MAP_SIDE);
+        //         movedec.Help();
+        //         exit(0);
+        //     }
+        //     movedec.nSectors = gsector_size;
+        //     break;
+        // }
         case 'o':
         {
             char *gout_filename = optarg;
@@ -638,7 +634,7 @@ void Initialize(int argc, char **argv)
         movedec.Help();
         exit(0);
     }
-
+    movedec.nSectors = -1;
     movedec.MainDec();
     movedec.Close();
 }
