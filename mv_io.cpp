@@ -290,6 +290,8 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     currColorHSV.s = 255;
     currColorHSV.v = 255;
 
+    fprintf(stderr, "%d \n", BUFFER_CURR(currFrameBuffer));
+
     while (detectedAreas[u].id > 0)
     {
         for (i = 0; i < nSectorsY; i++)
@@ -341,8 +343,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                     // outFrameV[sector_y][sector_x] = (uint8_t)128;
                     // coordinate *v = &(mvGridCoords[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x]);
                     // outFrameY[sector_y][sector_x] = (uint8_t)(sqrt(v->x * v->x + v->y * v->y) * 50);
-                    // outFrameY[sector_y][sector_x] = (uint8_t)(areaGridMarked[BUFFER_CURR(currFrameBuffer)][sector_y][sector_x] * 20);
-
+                    // outFrameY[sector_y][sector_x] = (uint8_t)(areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] ? 255 : 0);
                 }
             }
         }
