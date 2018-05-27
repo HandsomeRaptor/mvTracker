@@ -235,8 +235,9 @@ class MoveDetector
 	int packet_skip;
 	int useSquareElement;
 	int binThreshold;
+    bool perfTest;
 
-	// funcs
+    // funcs
     void SetFileParams(char *gfilename, int gsector_size, char *gout_filename, int gsensivity, int gamplify);
     void WriteMaskFile(FILE *file);
     void WriteFrameToFile(FILE *file, uint8_t Y[][MAX_MAP_SIDE], uint8_t U[][MAX_MAP_SIDE], uint8_t V[][MAX_MAP_SIDE]);

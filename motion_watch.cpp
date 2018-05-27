@@ -77,8 +77,16 @@ void MoveDetector::AllocBuffers(void)
 
 void MoveDetector::AllocAnalyzeBuffers() 
 {
-    nBlocksX = (dec_ctx->width + 15) / 16;
-    nBlocksY = (dec_ctx->height + 15) / 16;
+    if (perfTest)
+    {
+        nBlocksX = 80;
+        nBlocksY = 45;
+    }
+    else
+    {
+        nBlocksX = (dec_ctx->width + 15) / 16;
+        nBlocksY = (dec_ctx->height + 15) / 16;
+    }
     mb_stride = nBlocksX + 1;
 
     if (nSectors > 0)
@@ -105,8 +113,16 @@ void MoveDetector::AllocAnalyzeBuffers()
     }
     output_width = nSectorsX * mbPerSectorX * output_block_size;
     output_height = nSectorsY * mbPerSectorY * output_block_size;
-    input_width = dec_ctx->width;
-    input_height = dec_ctx->height;
+    if (perfTest)
+    {
+        input_width = 1280;
+        input_height = 720;
+    }
+    else
+    {
+        input_width = dec_ctx->width;
+        input_height = dec_ctx->height;
+    }
 }
 
 void MoveDetector::PrepareFrameBuffers()
@@ -412,27 +428,31 @@ void MoveDetector::MainDec()
 
     while (1)
     {
-        if ((ret = av_read_frame(fmt_ctx, &packet)) < 0)
+        if (!perfTest && (ret = av_read_frame(fmt_ctx, &packet)) < 0)
             break;
 
-        if (packet.stream_index == video_stream_index && ((packet_n % packet_skip == 0) || (packet_n < 10)))
+        if (perfTest || (packet.stream_index == video_stream_index && ((packet_n % packet_skip == 0) || (packet_n < 10))))
         {
             // avcodec_get_frame_defaults(frame);
-            got_frame = 0;
+            got_frame = perfTest ? 1 : 0;
 
             // ret = avcodec_decode_video2(dec_ctx, frame, &got_frame, &packet);
-            ret = decode(dec_ctx, frame, &got_frame, &packet);
-            if (ret < 0)
+            if (!perfTest)
             {
-                av_log(NULL, AV_LOG_ERROR, "Error decoding video\n");
-                break;
+                ret = decode(dec_ctx, frame, &got_frame, &packet);
+                if (ret < 0)
+                {
+                    av_log(NULL, AV_LOG_ERROR, "Error decoding video\n");
+                    break;
+                }
             }
 
             AllocAnalyzeBuffers();
 
             if (got_frame)
             {
-                currFrameNumber = frame->best_effort_timestamp / frame->pkt_duration;
+                if (!perfTest)
+                    currFrameNumber = frame->best_effort_timestamp / frame->pkt_duration;
                 if (frame->pict_type != FF_I_TYPE)
                 {
                     fprintf(stderr, "processing frame %d (packet no. %d, %d frames with MVs processed), \n", currFrameNumber, packet_n, processed_frame);
@@ -441,11 +461,14 @@ void MoveDetector::MainDec()
                     // ToDO: .............
 
                     // one thread ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                    if (nSectors >= 0)
-                        // MvScanFrame(packet_n, frame, dec_ctx);
-                        throw std::runtime_error("Can only wheelchair with -g -1");
-                    else
-                        MvScanFrameH(packet_n, frame, dec_ctx);
+                    if (!perfTest)
+                    {
+                        if (nSectors >= 0)
+                            // MvScanFrame(packet_n, frame, dec_ctx);
+                            throw std::runtime_error("Can only wheelchair with -g -1");
+                        else
+                            MvScanFrameH(packet_n, frame, dec_ctx);
+                    }
 
                     chrono::high_resolution_clock::time_point start_t_processing = chrono::high_resolution_clock::now();
                     MotionFieldProcessing();
@@ -454,6 +477,8 @@ void MoveDetector::MainDec()
 
                     delayedFrameNumber++;
                     processed_frame++;
+                    if (perfTest && processed_frame > 300)
+                        break;
                     // if (movemask_file_flag)
                     // 	printf("Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=y8 %s -loop 0 \n", output_width, output_height, mask_filename);
                 }
@@ -477,22 +502,25 @@ void MoveDetector::MainDec()
     fprintf(stderr, "Total execution time = %f sec\n", double(duration) / 1000000.0f);
     fprintf(stderr, "MV processing time = %f sec (%4.2f percent of total time)\n", double(duration_processing) / 1000000.0f, (double)duration_processing / (double)duration * 100.0f);
     fprintf(stderr, "Average FPS: %4.3f\n", (double)processed_frame * 1000000.0f / double(duration));
-    fprintf(stderr, "Video resolution: %dx%d; Framerate: %2.2f\n", dec_ctx->width, dec_ctx->height,
-            (float)fmt_ctx->streams[video_stream_index]->r_frame_rate.num / fmt_ctx->streams[video_stream_index]->r_frame_rate.den);
-    fprintf(stderr, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    if (!perfTest)
+    {
+        fprintf(stderr, "Video resolution: %dx%d; Framerate: %2.2f\n", dec_ctx->width, dec_ctx->height,
+                (float)fmt_ctx->streams[video_stream_index]->r_frame_rate.num / fmt_ctx->streams[video_stream_index]->r_frame_rate.den);
+        fprintf(stderr, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
-    if (movemask_file_flag)
-        if (USE_YUV2MPEG2)
-            fprintf(stderr, "Play mask file: mplayer %s -loop 0 \n\n",  mask_filename);
-        else
-            fprintf(stderr, "Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=i420 %s -loop 0 \n\n", output_width, output_height, mask_filename);
+        if (movemask_file_flag)
+            if (USE_YUV2MPEG2)
+                fprintf(stderr, "Play mask file: mplayer %s -loop 0 \n\n", mask_filename);
+            else
+                fprintf(stderr, "Play mask file: mplayer -demuxer rawvideo -rawvideo w=%d:h=%d:format=i420 %s -loop 0 \n\n", output_width, output_height, mask_filename);
 
-    if (dec_ctx)
-        avcodec_close(dec_ctx);
-    if (fmt_ctx)
-        avformat_close_input(&fmt_ctx);
-    if (frame)
-        av_freep(&frame);
+        if (dec_ctx)
+            avcodec_close(dec_ctx);
+        if (fmt_ctx)
+            avformat_close_input(&fmt_ctx);
+        if (frame)
+            av_freep(&frame);
+    }
 }
 
 void MoveDetector::Help(void)
@@ -630,9 +658,17 @@ void Initialize(int argc, char **argv)
     }
     if (movedec.OpenVideoFile(gfilename) < 0)
     {
-        fprintf(stderr, "Error while opening orig videostream %s\n", gfilename);
-        movedec.Help();
-        exit(0);
+        if (strcmp(gfilename, "perftest") == 0)            
+        {
+            fprintf(stderr, "Performing a performance test for a 1280x720 empty stream \n");
+            movedec.perfTest = true;
+        }
+        else
+        {
+            fprintf(stderr, "Error while opening orig videostream %s\n", gfilename);
+            movedec.Help();
+            exit(0);
+        }
     }
     movedec.nSectors = -1;
     movedec.MainDec();

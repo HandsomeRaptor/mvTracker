@@ -12,7 +12,6 @@
             "preLaunchTask": "makefile: Build Debug (silent)",
             "program": "${workspaceFolder}/motion_detect",
             "args": [
-                "-g","-1",
                 "-o","2.y4m",
                 //"-s","0",
                 //"-a","5",
