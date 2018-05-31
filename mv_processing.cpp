@@ -137,7 +137,7 @@ void MoveDetector::MorphologyProcess()
 
     DetectConnectedAreas2(mvMask, areaGridMarked[BUFFER_CURR(currFrameBuffer)]);
     ProcessConnectedAreas(areaGridMarked[BUFFER_CURR(currFrameBuffer)], areaBuffer[BUFFER_CURR(currFrameBuffer)]);
-    TrackAreas();
+    //TrackAreas();
 }
 
 static const char kernelCross[3][3] = {
@@ -426,6 +426,126 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
 
 void MoveDetector::TrackAreas()
 {
+    int i = 0;
+    //step 0: predict motion for existing trackers
+    for (auto &tracker : trackedObjects)
+    {
+        if (tracker.objStatus == TRACKERSTATUS_LOST)
+        {
+            tracker.center.x += tracker.direction.x;
+            tracker.center.y += tracker.direction.y;
+        }
+        else
+        {
+            tracker.direction.x = tracker.candidatePos.x - tracker.center.x;
+            tracker.direction.y = tracker.candidatePos.y - tracker.center.y;
+            tracker.center = tracker.candidatePos;
+            tracker.boundBoxU = tracker.candidateArea->boundBoxU;
+            tracker.boundBoxB = tracker.candidateArea->boundBoxB;
+            tracker.areaID = tracker.candidateAreaID;
+            tracker.id = tracker.candidateId;
+        }
+        tracker.candidatePos = {};
+        tracker.candidateAreaID = 0;
+        tracker.candidateId = 0;
+        tracker.iou = 0;
+        tracker.lifeTime--;
+    }
+    //also create new trackers for detected areas
+    connectedArea *currentAreas = areaBuffer[BUFFER_PREV(currFrameBuffer)];
+    connectedArea *nextAreas = areaBuffer[BUFFER_CURR(currFrameBuffer)];
+
+    while (currentAreas[i].id > 0)
+    {
+        if (!currentAreas[i].isTracked)
+            trackedObjects.push_back(trackedObject(currentAreas[i]));
+        i++;
+    }
+
+    auto detectedGridCurr = areaGridMarked[BUFFER_PREV(currFrameBuffer)];
+    auto detectedGridNext = areaGridMarked[BUFFER_CURR(currFrameBuffer)];
+    
+    //step 1: find good matches for every tracker-area pair based on IoU
+    for (auto tracker = trackedObjects.begin(); tracker != trackedObjects.end(); )
+    {
+        i = 0;
+        while (nextAreas[i].id > 0)
+        {           
+            // if ((abs(tracker->predictedPos.x - nextAreas[i].centroidX) > 150) || (abs(tracker->predictedPos.y - nextAreas[i].centroidY) > 150))
+            // {
+            //     i++;
+            //     continue;
+            // }
+
+            //mark working area
+            coordinate boundU = {min(tracker->boundBoxU.x + tracker->direction.x, nextAreas[i].boundBoxU.x), min(tracker->boundBoxU.y + tracker->direction.y, nextAreas[i].boundBoxU.y)};
+            coordinate boundB = {max(tracker->boundBoxB.x + tracker->direction.x, nextAreas[i].boundBoxB.x), max(tracker->boundBoxB.y + tracker->direction.x, nextAreas[i].boundBoxB.y)};
+            ValidateCoordinate(boundU);
+            ValidateCoordinate(boundB);
+
+            //calculate IoU
+            int _intersection = 0;
+            int _union = 0;
+            for (int v = boundU.y / output_block_size; v < boundB.y / output_block_size; v++)
+            {
+                for (int u = boundU.x / output_block_size; u < boundB.x / output_block_size; u++)
+                {
+                    if (detectedGridCurr[v + tracker->direction.y / output_block_size][u + tracker->direction.x / output_block_size] == tracker->areaID || detectedGridNext[v][u] == nextAreas[i].areaID)
+                    {
+                        _union++;
+                        if (detectedGridCurr[v + tracker->direction.y / output_block_size][u + tracker->direction.x / output_block_size] == tracker->areaID && detectedGridNext[v][u] == nextAreas[i].areaID)
+                            _intersection++;
+                    }
+                }
+            }
+            float iou = (float)_intersection / (float)_union;
+            //find area with best iou
+            if (iou > tracker->iou)
+            {
+                tracker->iou = iou;
+                tracker->candidatePos.x = nextAreas[i].centroidX;
+                tracker->candidatePos.y = nextAreas[i].centroidY;
+                tracker->candidateAreaID = nextAreas[i].areaID;
+                tracker->candidateId = nextAreas[i].id;
+                tracker->candidateArea = &nextAreas[i];
+            }
+            i++;
+        }
+
+        //if tracker has found a good area in next frame and is alive, update it
+        if (tracker->iou > 0.5)
+        {
+            tracker->lifeTime = 3;
+            tracker->candidateArea->isTracked = true;
+            if (tracker->objStatus == TRACKERSTATUS_INTOFRAME)
+                tracker->objStatus = TRACKERSTATUS_TRACKING;
+            if (tracker->objStatus == TRACKERSTATUS_NONE)
+                tracker->objStatus = TRACKERSTATUS_INTOFRAME;
+            ++tracker;
+        }
+        else
+        {
+            // if (tracker->lifeTime > 0)
+            // {
+            //     tracker->objStatus = TRACKERSTATUS_LOST;
+            //     ++tracker;
+            // }
+            // else
+                tracker = trackedObjects.erase(tracker);
+        }
+    }
+    }
+
+void inline MoveDetector::ValidateCoordinate(coordinate c)
+{
+    c.x = c.x > 0 ? c.x : 0;
+    c.y = c.y > 0 ? c.y : 0;
+    c.x = c.x < input_width ? c.x : input_width;
+    c.y = c.y < input_height ? c.y : input_height;
+}
+
+/*void MoveDetector::TrackAreas()
+{
     int i = 0, j = 0, u = 0, v = 0, w = 0;
     //int sizeTolerance = 1024 / output_block_size; //blocks
     //const float directionAngTolerance = 45;
@@ -487,7 +607,7 @@ void MoveDetector::TrackAreas()
             else if (
                 (abs(prevArea->centroidX - currArea->directionX - currArea->centroidX) < searchWindow) &&
                 (abs(prevArea->centroidY - currArea->directionY - currArea->centroidY) < searchWindow) &&
-                /*(abs(prevArea->size - currArea->size) < sizeTolerance) &&*/
+                (abs(prevArea->size - currArea->size) < sizeTolerance) &&
                 (currArea->size > sizeThreshold) &&
                 (prevArea->isUsed == false))
             {
@@ -501,9 +621,9 @@ void MoveDetector::TrackAreas()
         i++;
         areasCounter++;
     }
-}
+}*/
 
-void MoveDetector::TrackedAreasFiltering()
+/* void MoveDetector::TrackedAreasFiltering()
 {
     int i = 0, j = 0;
     connectedArea *detectedAreas = areaBuffer[BUFFER_OLDEST(currFrameBuffer)];
@@ -566,7 +686,7 @@ void MoveDetector::TrackedAreasFiltering()
         else
             ++it;
     }
-}
+} */
 
 /*
 void MoveDetector::SpatialConsistProcess()

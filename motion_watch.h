@@ -42,7 +42,7 @@ extern "C"
 #define MAX_MAP_SIDE 500
 #define MAX_FILENAME 600
 #define MAX_CONNAREAS 1000
-#define AREABUFFER_SIZE 6
+#define AREABUFFER_SIZE 3
 #define USE_YUV2MPEG2 1
 
 //default values
@@ -69,10 +69,12 @@ extern "C"
 #define SUBMB_TYPE_4x8 7
 #define SUBMB_TYPE_4x4 8
 
-#define AREASTATUS_NONE 0
-#define AREASTATUS_INTOFRAME 1
-#define AREASTATUS_OUTOFFRAME 2
-#define AREASTATUS_OCCLUSION 4
+#define TRACKERSTATUS_NONE 0
+#define TRACKERSTATUS_INTOFRAME 1
+#define TRACKERSTATUS_OUTOFFRAME 2
+#define TRACKERSTATUS_OCCLUSION 4
+#define TRACKERSTATUS_TRACKING 8
+#define TRACKERSTATUS_LOST 16
 
 #define BUFFER_NEXT(a) a
 #define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
@@ -125,28 +127,44 @@ class MoveDetector
 
     struct trackedObject
     {
+        int trackerID;
         int id;
+        int areaID;
         int size;
         coordinate boundBoxU, boundBoxB;
-        float centerX, centerY;
-        float directionX, directionY;
+        coordinate center;
+        coordinate direction;
+        coordinate predictedPos;
         unsigned char objStatus;
-        int framesToLive;
+        float iou;
+        coordinate candidatePos;
+        int candidateAreaID;
+        int candidateId;
+        int lifeTime;
+        connectedArea *candidateArea;
 
         trackedObject()
         {}
         trackedObject(connectedArea a)
         {
+            trackerID = a.id;
             id = a.id;
+            areaID = a.areaID;
             size = a.size;
             boundBoxU = a.boundBoxU;
             boundBoxB = a.boundBoxB;
-            centerX = a.centroidX;
-            centerY = a.centroidY;
-            directionX = a.directionX;
-            directionY = a.directionY;
-            objStatus = a.areaStatus;
-            framesToLive = 0;
+            center.x = a.centroidX;
+            center.y = a.centroidY;
+            direction.x = -a.directionX;
+            direction.y = -a.directionY;
+            // predictedPos.x = center.x - direction.x;
+            // predictedPos.y = center.y - direction.y;
+            objStatus = TRACKERSTATUS_NONE;
+            lifeTime = 3;
+            iou = 0;
+            candidatePos = {};
+            candidateAreaID = 0;
+            candidateId = 0;
         }
 
         void UpdateFromArea(connectedArea a)
@@ -154,10 +172,10 @@ class MoveDetector
             size = a.size;
             boundBoxU = a.boundBoxU;
             boundBoxB = a.boundBoxB;
-            centerX = a.centroidX;
-            centerY = a.centroidY;
-            directionX = a.directionX;
-            directionY = a.directionY;
+            center.x = a.centroidX;
+            center.y = a.centroidY;
+            direction.x = a.directionX;
+            direction.y = a.directionY;
             objStatus = a.areaStatus;
         }
     };
@@ -264,8 +282,8 @@ class MoveDetector
 	void DetectConnectedAreas(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
     void DetectConnectedAreas2(int (*inputArray)[MAX_MAP_SIDE], int (*outputArray)[MAX_MAP_SIDE]);
     void ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], connectedArea (&processedAreas)[MAX_CONNAREAS]);
+
     void TrackAreas();
-    
     void TrackedAreasFiltering();
     //void SpatialConsistProcess();
 
@@ -278,6 +296,8 @@ class MoveDetector
 
     void PrepareFrameBuffers();
     void SkipDummyFrame();
+
+    void inline ValidateCoordinate(coordinate c);
 };
 
 #endif /* MOTION_WATCH_H_ */

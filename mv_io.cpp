@@ -290,25 +290,27 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     currColorHSV.s = 255;
     currColorHSV.v = 255;
 
-    fprintf(stderr, "%d \n", BUFFER_CURR(currFrameBuffer));
-
     while (detectedAreas[u].id > 0)
     {
         for (i = 0; i < nSectorsY; i++)
         {
             for (j = 0; j < nSectorsX; j++)
             {
-                if (areaGridMarked[i][j])
+                if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j])
                 {
                     if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] == detectedAreas[u].areaID)
                     {
+                        areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = -1;
                         if (detectedAreas[u].isTracked)
                         {
-                            areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = detectedAreas[u].id;
-                        }
-                        else
-                        {
-                            areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = 0;
+                            for (auto &tracker : trackedObjects)
+                            {
+                                if (tracker.id == detectedAreas[u].id && tracker.objStatus == TRACKERSTATUS_TRACKING)
+                                {
+                                    areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = tracker.trackerID;
+                                    break;
+                                }
+                            }                            
                         }
                     }
                 }
@@ -337,7 +339,10 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                         outFrameU[sector_y][sector_x] = (uint8_t)(CRGB2Cb(currColorRGB.r, currColorRGB.g, currColorRGB.b));
                         outFrameV[sector_y][sector_x] = (uint8_t)(CRGB2Cr(currColorRGB.r, currColorRGB.g, currColorRGB.b));
                     }
-
+                    else if (areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][sector_y][sector_x] == -1)
+                    {
+                        outFrameY[sector_y][sector_x] = (uint8_t)255;
+                    }
 
                     // outFrameU[sector_y][sector_x] = (uint8_t)128;
                     // outFrameV[sector_y][sector_x] = (uint8_t)128;
@@ -350,7 +355,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     }
     for (auto const &i : trackedObjects)
     {
-        outFrameY[int(i.centerY / output_block_size)][int(i.centerX / output_block_size)] = (uint8_t)255;
+        outFrameY[int(i.center.y / output_block_size)][int(i.center.x / output_block_size)] = (uint8_t)255;
     }
 
     WriteFrameToFile(filemask, outFrameY, outFrameU, outFrameV);
@@ -548,7 +553,7 @@ void MoveDetector::WriteMapConsole()
         if ((i < MAX_CONNAREAS) && (detectedAreas[i].id != 0))
         {
             currId = detectedAreas[i].id;
-            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Mag/Angle: %6.2f %6.2f IsTracked: %d Status: %d Appearances: %d \n",
+            fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Mag/Angle: %6.2f %6.2f \n",
                     detectedAreas[i].id,
                     detectedAreas[i].size,
                     detectedAreas[i].centroidX,
@@ -556,10 +561,7 @@ void MoveDetector::WriteMapConsole()
                     detectedAreas[i].directionX,
                     detectedAreas[i].directionY,
                     detectedAreas[i].directionMag,
-                    detectedAreas[i].directionAng,
-                    detectedAreas[i].isTracked,
-                    detectedAreas[i].areaStatus,
-                    detectedAreas[i].appearances);
+                    detectedAreas[i].directionAng);
             i++;
         }
         else
@@ -569,15 +571,17 @@ void MoveDetector::WriteMapConsole()
     fprintf(stderr, "---- Tracked objects ---- \n");
     for (auto &i : trackedObjects)
     {
-        fprintf(stderr, "ID: %5d  Size: %5d  Center: (%6.2f %6.2f) dirX/dirY: %6.2f %6.2f  Status: %d  FTL: %d\n",
+        fprintf(stderr, "Tracker ID: %5d  Current area: %5d  Next area: %5d Center: (%4d %4d) dirX/dirY: %4d %4d FTL: %d  IoU: %4.2f  Status: %d\n",
+                i.trackerID,
                 i.id,
-                i.size,
-                i.centerX,
-                i.centerY,
-                i.directionX,
-                i.directionY,
-                i.objStatus,
-                i.framesToLive);
+                i.candidateId,
+                i.center.x,
+                i.center.y,
+                i.direction.x,
+                i.direction.y,
+                i.lifeTime,
+                i.iou,
+                i.objStatus);
     }
 
     fprintf(stderr, "\n");

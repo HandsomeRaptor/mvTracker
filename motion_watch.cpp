@@ -41,6 +41,7 @@ MoveDetector::MoveDetector()
     movemask_file_flag = 0;
     amplify_yuv = 255;
     movemask_std_flag = 0;
+    perfTest = false;
 
     output_width = 0;
     output_height = 0;
@@ -381,7 +382,8 @@ void MoveDetector::MotionFieldProcessing()
 
         if (delayedFrameNumber >= AREABUFFER_SIZE - 3)
         {
-            TrackedAreasFiltering();
+            // TrackedAreasFiltering();
+            TrackAreas();
             if (movemask_std_flag)
                 WriteMapConsole();
 
@@ -395,8 +397,8 @@ void MoveDetector::MotionFieldProcessing()
 void MoveDetector::SkipDummyFrame()
 {
     //output last frame again
-    if (movemask_file_flag)
-        WriteMaskFile(fvideomask_desc);
+    // if (movemask_file_flag)
+    //     WriteMaskFile(fvideomask_desc);
 }
 
 void MoveDetector::MainDec()
@@ -493,7 +495,8 @@ void MoveDetector::MainDec()
             }
         }
         ++packet_n;
-        av_packet_unref(&packet);
+        if (!perfTest)
+            av_packet_unref(&packet);
     }
 
     chrono::high_resolution_clock::time_point end_t = chrono::high_resolution_clock::now();
