@@ -305,7 +305,7 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
                         {
                             for (auto &tracker : trackedObjects)
                             {
-                                if (tracker.id == detectedAreas[u].id && tracker.objStatus == TRACKERSTATUS_TRACKING)
+                                if (tracker.id == detectedAreas[u].id && tracker.currStatus & (TRACKERSTATUS_TRACKING | TRACKERSTATUS_INTOFRAME | TRACKERSTATUS_LOST))
                                 {
                                     areaGridMarked[BUFFER_OLDEST(currFrameBuffer)][i][j] = tracker.trackerID;
                                     break;
@@ -355,7 +355,102 @@ void MoveDetector::WriteMaskFile(FILE *filemask) {
     }
     for (auto const &i : trackedObjects)
     {
-        outFrameY[int(i.center.y / output_block_size)][int(i.center.x / output_block_size)] = (uint8_t)255;
+        currColorHSV.h = ((i.trackerID % 255) + 128) % 255;
+        currColorRGB = HsvToRgb(currColorHSV);
+        uint8_t *y = &outFrameU[int(i.center.y / output_block_size)][int(i.center.x / output_block_size)];
+        uint8_t *u = &outFrameU[int(i.center.y / output_block_size)][int(i.center.x / output_block_size)];
+        uint8_t *v = &outFrameV[int(i.center.y / output_block_size)][int(i.center.x / output_block_size)];
+        *y = (uint8_t)(CRGB2Y(currColorRGB.r, currColorRGB.g, currColorRGB.b) - 128);
+        *u = (uint8_t)(CRGB2Cb(currColorRGB.r, currColorRGB.g, currColorRGB.b));
+        *v = (uint8_t)(CRGB2Cr(currColorRGB.r, currColorRGB.g, currColorRGB.b));
+
+        int8_t boxColorY = 255;
+        int8_t boxColorU = 128;
+        int8_t boxColorV = 128;
+        switch (i.currStatus)
+        {
+            case TRACKERSTATUS_NONE:
+            {
+                //while
+                boxColorY = CRGB2Y(255, 255, 255);
+                boxColorU = CRGB2Cb(255, 255, 255);
+                boxColorV = CRGB2Cr(255, 255, 255);
+                break;
+            }
+            case TRACKERSTATUS_INTOFRAME:
+            {
+                //yellow
+                boxColorY = CRGB2Y(255, 255, 0);
+                boxColorU = CRGB2Cb(255, 255, 0);
+                boxColorV = CRGB2Cr(255, 255, 0);
+                break;
+            }
+            case TRACKERSTATUS_OUTOFFRAME:
+            {
+                //cyan
+                boxColorY = CRGB2Y(0, 255, 255);
+                boxColorU = CRGB2Cb(0, 255, 255);
+                boxColorV = CRGB2Cr(0, 255, 255);
+                break;
+            }
+            case TRACKERSTATUS_OCCLUSION:
+            {
+                //magenta
+                boxColorY = CRGB2Y(255, 0, 255);
+                boxColorU = CRGB2Cb(255, 0, 255);
+                boxColorV = CRGB2Cr(255, 0, 255);
+                break;
+            }
+            case TRACKERSTATUS_TRACKING:
+            {
+                //green
+                boxColorY = CRGB2Y(0, 255, 0);
+                boxColorU = CRGB2Cb(0, 255, 0);
+                boxColorV = CRGB2Cr(0, 255, 0);
+                break;
+            }
+            case TRACKERSTATUS_LOST:
+            {
+                //red
+                boxColorY = CRGB2Y(255, 0, 0);
+                boxColorU = CRGB2Cb(255, 0, 0);
+                boxColorV = CRGB2Cr(255, 0, 0);
+                break;
+            }
+            case TRACKERSTATUS_MERGE:
+            {
+                //blue
+                boxColorY = CRGB2Y(0, 0, 255);
+                boxColorU = CRGB2Cb(0, 0, 255);
+                boxColorV = CRGB2Cr(0, 0, 255);
+                break;
+            }
+        }
+
+        for (int u = i.boundBoxU.y / output_block_size; u < i.boundBoxB.y / output_block_size; u += output_block_size)
+        {
+            outFrameY[u][i.boundBoxU.x / output_block_size] = boxColorY;
+            outFrameU[u][i.boundBoxU.x / output_block_size] = boxColorU;
+            outFrameV[u][i.boundBoxU.x / output_block_size] = boxColorV;
+        }
+        for (int u = i.boundBoxU.y / output_block_size; u < i.boundBoxB.y / output_block_size; u += output_block_size)
+        {
+            outFrameY[u][i.boundBoxB.x / output_block_size] = boxColorY;
+            outFrameU[u][i.boundBoxB.x / output_block_size] = boxColorU;
+            outFrameV[u][i.boundBoxB.x / output_block_size] = boxColorV;
+        }
+        for (int u = i.boundBoxU.x / output_block_size; u < i.boundBoxB.x / output_block_size; u += output_block_size)
+        {
+            outFrameY[i.boundBoxU.y / output_block_size][u] = boxColorY;
+            outFrameU[i.boundBoxU.y / output_block_size][u] = boxColorU;
+            outFrameV[i.boundBoxU.y / output_block_size][u] = boxColorV;
+        }
+        for (int u = i.boundBoxU.x / output_block_size; u < i.boundBoxB.x / output_block_size; u += output_block_size)
+        {
+            outFrameY[i.boundBoxB.y / output_block_size][u] = boxColorY;
+            outFrameU[i.boundBoxB.y / output_block_size][u] = boxColorU;
+            outFrameV[i.boundBoxB.y / output_block_size][u] = boxColorV;
+        }
     }
 
     WriteFrameToFile(filemask, outFrameY, outFrameU, outFrameV);
@@ -574,14 +669,14 @@ void MoveDetector::WriteMapConsole()
         fprintf(stderr, "Tracker ID: %5d  Current area: %5d  Next area: %5d Center: (%4d %4d) dirX/dirY: %4d %4d FTL: %d  IoU: %4.2f  Status: %d\n",
                 i.trackerID,
                 i.id,
-                i.candidateId,
+                i.candidateArea->id,
                 i.center.x,
                 i.center.y,
                 i.direction.x,
                 i.direction.y,
                 i.lifeTime,
                 i.iou,
-                i.objStatus);
+                i.currStatus);
     }
 
     fprintf(stderr, "\n");

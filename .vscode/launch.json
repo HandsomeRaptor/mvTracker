@@ -19,7 +19,8 @@
                 //"-p","1",
                 // "-s","150",
                 "-c",
-                "/root/Videos/highway_720.mp4"
+                // "/root/Videos/highway_720.mp4"
+                "/root/Videos/stmarc.mp4"
                 ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

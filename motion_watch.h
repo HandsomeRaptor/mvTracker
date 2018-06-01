@@ -75,6 +75,7 @@ extern "C"
 #define TRACKERSTATUS_OCCLUSION 4
 #define TRACKERSTATUS_TRACKING 8
 #define TRACKERSTATUS_LOST 16
+#define TRACKERSTATUS_MERGE 32
 
 #define BUFFER_NEXT(a) a
 #define BUFFER_CURR(a) (((a - 1) % AREABUFFER_SIZE) + AREABUFFER_SIZE) % AREABUFFER_SIZE
@@ -135,12 +136,13 @@ class MoveDetector
         coordinate center;
         coordinate direction;
         coordinate predictedPos;
-        unsigned char objStatus;
+        // unsigned char nextStatus;
+        unsigned char currStatus;
         float iou;
-        coordinate candidatePos;
-        int candidateAreaID;
-        int candidateId;
+        int inter;
         int lifeTime;
+        int aliveFor;
+        bool keep;
         connectedArea *candidateArea;
 
         trackedObject()
@@ -159,12 +161,14 @@ class MoveDetector
             direction.y = -a.directionY;
             // predictedPos.x = center.x - direction.x;
             // predictedPos.y = center.y - direction.y;
-            objStatus = TRACKERSTATUS_NONE;
+            // nextStatus = TRACKERSTATUS_NONE;
             lifeTime = 3;
+            aliveFor = 0;
             iou = 0;
-            candidatePos = {};
-            candidateAreaID = 0;
-            candidateId = 0;
+            inter = 0;
+            // nextStatus = TRACKERSTATUS_NONE;
+            currStatus = TRACKERSTATUS_INTOFRAME;
+            keep = false;
         }
 
         void UpdateFromArea(connectedArea a)
@@ -176,7 +180,7 @@ class MoveDetector
             center.y = a.centroidY;
             direction.x = a.directionX;
             direction.y = a.directionY;
-            objStatus = a.areaStatus;
+            // nextStatus = a.areaStatus;
         }
     };
 
@@ -298,6 +302,7 @@ class MoveDetector
     void SkipDummyFrame();
 
     void inline ValidateCoordinate(coordinate c);
+    float inline CalculateIoUofBoxes(coordinate b1U, coordinate b1B, coordinate b2U, coordinate b2B);
 };
 
 #endif /* MOTION_WATCH_H_ */

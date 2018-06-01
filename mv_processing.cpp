@@ -427,29 +427,42 @@ void MoveDetector::ProcessConnectedAreas(int (*markedAreas)[MAX_MAP_SIDE], conne
 void MoveDetector::TrackAreas()
 {
     int i = 0;
-    //step 0: predict motion for existing trackers
+    //step 0: update existing trackers
     for (auto &tracker : trackedObjects)
     {
-        if (tracker.objStatus == TRACKERSTATUS_LOST)
+        //if tracker has an area assigned in this new frame, update from it
+        if (tracker.currStatus & (TRACKERSTATUS_TRACKING | TRACKERSTATUS_INTOFRAME))
+        {
+            tracker.direction.x = tracker.candidateArea->centroidX - tracker.center.x;
+            tracker.direction.y = tracker.candidateArea->centroidY - tracker.center.y;
+            tracker.center.x = tracker.candidateArea->centroidX;
+            tracker.center.y = tracker.candidateArea->centroidY;
+            tracker.boundBoxU = tracker.candidateArea->boundBoxU;
+            tracker.boundBoxB = tracker.candidateArea->boundBoxB;
+            tracker.areaID = tracker.candidateArea->areaID;
+            tracker.id = tracker.candidateArea->id;
+            tracker.size = tracker.candidateArea->size;
+            if (tracker.currStatus & TRACKERSTATUS_INTOFRAME)
+                tracker.currStatus = TRACKERSTATUS_TRACKING;
+        }
+        //if tracker cannot update from an area
+        else if (tracker.currStatus & TRACKERSTATUS_LOST)
         {
             tracker.center.x += tracker.direction.x;
             tracker.center.y += tracker.direction.y;
+            tracker.boundBoxU.x += tracker.direction.x;
+            tracker.boundBoxU.y += tracker.direction.y;
+            tracker.boundBoxB.x += tracker.direction.x;
+            tracker.boundBoxB.y += tracker.direction.y;
+            tracker.areaID = 0;
+            tracker.id = 0;
+            tracker.size = 0;
         }
-        else
-        {
-            tracker.direction.x = tracker.candidatePos.x - tracker.center.x;
-            tracker.direction.y = tracker.candidatePos.y - tracker.center.y;
-            tracker.center = tracker.candidatePos;
-            tracker.boundBoxU = tracker.candidateArea->boundBoxU;
-            tracker.boundBoxB = tracker.candidateArea->boundBoxB;
-            tracker.areaID = tracker.candidateAreaID;
-            tracker.id = tracker.candidateId;
-        }
-        tracker.candidatePos = {};
-        tracker.candidateAreaID = 0;
-        tracker.candidateId = 0;
+
         tracker.iou = 0;
-        tracker.lifeTime--;
+        tracker.inter = 0;
+        tracker.keep = false;
+        tracker.aliveFor++;
     }
     //also create new trackers for detected areas
     connectedArea *currentAreas = areaBuffer[BUFFER_PREV(currFrameBuffer)];
@@ -470,12 +483,13 @@ void MoveDetector::TrackAreas()
     {
         i = 0;
         while (nextAreas[i].id > 0)
-        {           
-            // if ((abs(tracker->predictedPos.x - nextAreas[i].centroidX) > 150) || (abs(tracker->predictedPos.y - nextAreas[i].centroidY) > 150))
-            // {
-            //     i++;
-            //     continue;
-            // }
+        {
+            //discard small detections
+            if (nextAreas[i].size < 20)
+            {
+                i++;
+                continue;
+            }
 
             //mark working area
             coordinate boundU = {min(tracker->boundBoxU.x + tracker->direction.x, nextAreas[i].boundBoxU.x), min(tracker->boundBoxU.y + tracker->direction.y, nextAreas[i].boundBoxU.y)};
@@ -503,38 +517,88 @@ void MoveDetector::TrackAreas()
             if (iou > tracker->iou)
             {
                 tracker->iou = iou;
-                tracker->candidatePos.x = nextAreas[i].centroidX;
-                tracker->candidatePos.y = nextAreas[i].centroidY;
-                tracker->candidateAreaID = nextAreas[i].areaID;
-                tracker->candidateId = nextAreas[i].id;
                 tracker->candidateArea = &nextAreas[i];
+                tracker->inter = _intersection;
+                tracker->size = nextAreas[i].size;
             }
             i++;
         }
 
         //if tracker has found a good area in next frame and is alive, update it
-        if (tracker->iou > 0.5)
+        if (tracker->iou > 0.5 && (tracker->size > 100 || tracker->aliveFor > 3))
         {
-            tracker->lifeTime = 3;
             tracker->candidateArea->isTracked = true;
-            if (tracker->objStatus == TRACKERSTATUS_INTOFRAME)
-                tracker->objStatus = TRACKERSTATUS_TRACKING;
-            if (tracker->objStatus == TRACKERSTATUS_NONE)
-                tracker->objStatus = TRACKERSTATUS_INTOFRAME;
-            ++tracker;
+
+            if (tracker->currStatus & (TRACKERSTATUS_LOST | TRACKERSTATUS_MERGE))
+                tracker->currStatus = TRACKERSTATUS_TRACKING;
+
+            // if (tracker->currStatus & (TRACKERSTATUS_LOST))
+            //     tracker->lifeTime--;
+            // else
+            tracker->lifeTime = 3;
+            tracker->keep = true;
+        }
+        //if area with good iou wasnt found, this tracker is lost
+        else if (tracker->lifeTime > 0 &&
+                 tracker->aliveFor > 3 &&
+                 tracker->currStatus & (TRACKERSTATUS_TRACKING | TRACKERSTATUS_LOST))
+        {
+
+            tracker->currStatus = TRACKERSTATUS_LOST;
+            tracker->lifeTime--;
+            tracker->keep = true;            
+        }
+        // //if tracker is new and got no detection in next frame, or its lifetime ended, delete it
+        // else
+        // {
+        //     tracker = trackedObjects.erase(tracker);
+        //     continue;
+        // }
+        ++tracker;
+    }
+    //step 3: try to correct lost trackers with newly found ones
+    for (auto tracker = trackedObjects.begin(); tracker != trackedObjects.end();)
+    {
+        if (tracker->currStatus & TRACKERSTATUS_INTOFRAME)
+        {
+            float bestIoU = 0.0;
+            trackedObject *bestMatch;
+            for (auto &trk : trackedObjects)
+            {
+                if (trk.currStatus & TRACKERSTATUS_LOST)
+                {
+                    float iou = CalculateIoUofBoxes(tracker->boundBoxU, tracker->boundBoxB, trk.boundBoxU, trk.boundBoxB);
+                    if (iou > bestIoU)
+                    {
+                        bestMatch = &trk;
+                        bestIoU = iou;
+                    }
+                }
+            }
+            if (bestIoU > 0.5 && tracker->candidateArea != NULL)
+            {
+                bestMatch->candidateArea = tracker->candidateArea;
+                bestMatch->currStatus = TRACKERSTATUS_TRACKING;
+                bestMatch->lifeTime = 3;
+                bestMatch->keep = true;
+                tracker = trackedObjects.erase(tracker);
+            }
+            else
+                ++tracker;
         }
         else
+            ++tracker;
+    }
+    for (auto tracker = trackedObjects.begin(); tracker != trackedObjects.end();)
+    {
+        if (!tracker->keep)
         {
-            // if (tracker->lifeTime > 0)
-            // {
-            //     tracker->objStatus = TRACKERSTATUS_LOST;
-            //     ++tracker;
-            // }
-            // else
-                tracker = trackedObjects.erase(tracker);
+            tracker = trackedObjects.erase(tracker);
         }
+        else
+            ++tracker;
     }
-    }
+}
 
 void inline MoveDetector::ValidateCoordinate(coordinate c)
 {
@@ -542,6 +606,24 @@ void inline MoveDetector::ValidateCoordinate(coordinate c)
     c.y = c.y > 0 ? c.y : 0;
     c.x = c.x < input_width ? c.x : input_width;
     c.y = c.y < input_height ? c.y : input_height;
+}
+
+float inline MoveDetector::CalculateIoUofBoxes(coordinate b1U, coordinate b1B, coordinate b2U, coordinate b2B)
+{
+    int x_left = max(b1U.x, b2U.x);
+    int x_right = min(b1B.x, b2B.x);
+    int y_top = max(b1U.y, b2U.y);
+    int y_bottom = min(b1B.y, b2B.y);
+
+    if ((x_right < x_left) || (y_bottom < y_top))
+        return 0.0;
+
+    int intersection = (x_right - x_left) * (y_bottom - y_top);
+
+    int b1_area = (b1B.x - b1U.x) * (b1B.y - b1U.y);
+    int b2_area = (b2B.x - b2U.x) * (b2B.y - b2U.y);
+
+    return (float)intersection / (float)(b1_area + b2_area - intersection);
 }
 
 /*void MoveDetector::TrackAreas()
